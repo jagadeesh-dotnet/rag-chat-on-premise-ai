@@ -1,0 +1,42 @@
+<div class="backdrop" *ngIf="expanded" (click)="close()"></div>
+<section class="card" [class.expanded]="expanded">
+  <header class="toolbar">
+    <span class="source">{{ source }} · {{ table.rows.length }} rows{{ table.truncated ? ' (first only)' : '' }}</span>
+    <div class="actions">
+      <div class="toggle" *ngIf="spec">
+        <button type="button" [class.on]="view === 'chart'" (click)="view = 'chart'">Chart</button>
+        <button type="button" [class.on]="view === 'table'" (click)="view = 'table'">Table</button>
+      </div>
+      <button type="button" class="icon" title="Download CSV" (click)="downloadCsv()">CSV</button>
+      <button type="button" class="icon" title="Download chart as PNG" *ngIf="view === 'chart'" (click)="downloadPng()">PNG</button>
+      <button type="button" class="icon" title="Copy (pastes into Excel)" (click)="copy()">{{ copied ? 'Copied' : 'Copy' }}</button>
+      <button type="button" class="icon" [title]="expanded ? 'Close (Esc)' : 'Expand'" (click)="expanded = !expanded">
+        {{ expanded ? '✕' : '⤢' }}
+      </button>
+    </div>
+  </header>
+
+  <app-result-chart *ngIf="view === 'chart' && spec" [table]="table" [spec]="spec"></app-result-chart>
+
+  <div class="table-wrap" *ngIf="view === 'table'">
+    <table>
+      <thead>
+        <tr>
+          <th *ngFor="let c of table.columns; let i = index" (click)="sortBy(i)" [class.sorted]="sortColumn === i">
+            {{ c }}<span class="arrow" *ngIf="sortColumn === i">{{ sortDescending ? '▼' : '▲' }}</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let row of rows">
+          <td *ngFor="let v of row" [class.numeric]="isNumber(v)">{{ formatCell(v) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <details class="sql">
+    <summary>SQL</summary>
+    <pre>{{ table.sql }}</pre>
+  </details>
+</section>
