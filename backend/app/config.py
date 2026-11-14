@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     chunk_size: int = 1200
     chunk_overlap: int = 200
     embed_batch: int = 32
+    qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
+    qdrant_collection: str = "documents"
+    min_score: float = 0.6  # dense cosine below this = unrelated (measured: off-topic ~0.55, hits 0.6-0.9)
 
 
 # Shared settings instance
