@@ -7,7 +7,15 @@
         <summary>Thinking…</summary>
         {{ m.thinking }}
       </details>
+      <div *ngFor="let step of m.steps" class="step">🔎 {{ step }}</div>
       <div class="content">{{ m.content || (streaming ? '…' : '') }}</div>
+      <ol *ngIf="m.sources?.length" class="sources">
+        <li *ngFor="let s of m.sources" [title]="s.snippet">
+          <span class="num">[{{ s.number }}]</span>
+          {{ s.source }}<ng-container *ngIf="s.page"> · page {{ s.page }}</ng-container
+          ><ng-container *ngIf="s.heading"> · {{ s.heading }}</ng-container>
+        </li>
+      </ol>
     </div>
   </div>
 

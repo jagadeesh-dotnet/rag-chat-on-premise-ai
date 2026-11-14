@@ -1,13 +1,15 @@
 import { AfterViewChecked, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { ChatService } from '../chat.service';
-import { ChatEvent, ChatMessage } from '../chat.models';
+import { ChatEvent, ChatMessage, Source } from '../chat.models';
 
 
 /** A message as shown on screen: the API fields plus display-only state. */
 interface UiMessage extends ChatMessage {
   thinking?: string;
   error?: boolean;
+  steps?: string[]; // e.g. 'Searched: "clause 6.2" (5 passages)'
+  sources?: Source[];
 }
 
 @Component({
@@ -85,6 +87,20 @@ export class ChatComponent implements AfterViewChecked, OnDestroy {
         break;
       case 'token':
         answer.content += event.content;
+        this.scrollPending = true;
+        break;
+      case 'tool_call':
+        answer.steps = [...(answer.steps ?? []), `Searching: "${event.arguments.query ?? ''}"`];
+        this.scrollPending = true;
+        break;
+      case 'tool_result': {
+        const steps = answer.steps ?? [];
+        const found = event.count ? `${event.count} passages` : 'nothing found';
+        steps[steps.length - 1] = steps[steps.length - 1].replace('Searching', 'Searched') + ` (${found})`;
+        break;
+      }
+      case 'sources':
+        answer.sources = event.items;
         this.scrollPending = true;
         break;
       case 'error':
