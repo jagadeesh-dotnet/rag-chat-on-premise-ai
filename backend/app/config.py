@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     embed_batch: int = 32
     qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
     qdrant_collection: str = "documents"
+    search_k: int = 5  # passages per search given to the model
     min_score: float = 0.6  # dense cosine below this = unrelated (measured: off-topic ~0.55, hits 0.6-0.9)
 
 
