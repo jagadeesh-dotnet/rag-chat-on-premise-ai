@@ -1,22 +1,28 @@
-"""The chat agent: the model decides when to search, our code runs the search, the model answers with citations."""
+"""The chat agent: the model decides which tool to use, our code runs it, the model answers.
+
+Tools: search_documents (passages, cited as [n]) and query_tables (SQL over spreadsheets, shown as a table).
+"""
 
 import asyncio
 import re
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 
 from ollama import AsyncClient
 
 from app.config import settings
 from app.schemas import ChatMessage
-from app.tools import documents
+from app.tables.catalog import get_catalog
+from app.tools import documents, tables
 
-SYSTEM_PROMPT = """You are a helpful assistant that answers questions about the user's own documents \
-(policies, standards, manuals, papers).
+SYSTEM_PROMPT = """You are a helpful assistant that answers questions from the user's own files. \
+Never answer a factual question from your own knowledge: unless it is small talk (greetings, thanks, \
+questions about yourself), use a tool first.
 
-Rules:
-- For any question the documents could answer, call search_documents first - also when it was discussed \
-earlier in the conversation, so the answer can be cited. Don't search for greetings, thanks or questions \
-about yourself.
+Rules for documents (search_documents):
+- Use search_documents for anything written in documents: policies, rules, procedures, HR topics such as \
+leave, standards such as ISO 27001, manuals, papers - also when it was discussed earlier in the conversation, \
+so the answer can be cited.
 - Write the search query as a standalone question: resolve "it", "that" or "again" from the conversation, \
 and keep document names and clause or control numbers.
 - Answer only from the passages returned. Cite every fact with its passage number in square brackets, \
@@ -25,6 +31,22 @@ like [1] or [2][3]. Never cite a number that wasn't returned.
 - Say where something comes from: a requirement of a standard (e.g. ISO 27001 control A.6.7) is not the \
 organisation's own policy.
 - Be concise."""
+
+SPREADSHEET_PROMPT = """
+
+Spreadsheet tables (query them with query_tables, DuckDB SQL):
+{schema}
+
+Rules for spreadsheets (query_tables):
+- Use query_tables only for numbers computed from these tables: totals, counts, averages, rankings, trends. \
+Everything else is a document question.
+- Rows are often order lines, not orders: count orders, customers or products with COUNT(DISTINCT id_column), \
+never COUNT(*).
+- Show names, not IDs (a name column instead of an ID column). For "top N" use ORDER BY ... DESC LIMIT N.
+- Group by month with strftime(date_column, '%Y-%m') and ORDER BY it ascending. Round money with ROUND(x, 2).
+- If the data has no column for what was asked, say so; don't guess.
+- If a query fails, read the error and fix the SQL.
+- The result table is shown to the user automatically: state the key numbers in words, don't repeat the table."""
 
 _client = AsyncClient(host=settings.ollama_host)
 _CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")  # [1], [2, 3]
@@ -46,20 +68,65 @@ def _history(messages: list[ChatMessage]) -> list[dict]:
     ]
 
 
-async def _run_tool(name: str, args: dict, first_number: int) -> tuple[str, list[dict]]:
+async def _search_hint(history: list[ChatMessage]) -> str:
+    """Pre-search with the latest question. If the documents have related passages, say where.
+
+    A rule alone ("never answer from your own knowledge") isn't enough: for questions that sound general,
+    like "Compare Azure Repos with GitHub", the model answers from memory. Naming the files works.
+    """
+    question = next((m.content for m in reversed(history) if m.role == "user"), "")
+    if len(question.strip()) < 3:
+        return ""
+    hits = await asyncio.to_thread(documents.run_search, question)
+    files = list(dict.fromkeys(h["source"] for h in hits))  # unique, best first
+    if not files:
+        return ""
+    return (
+        f"\n\nHint: a quick search for the latest question found related passages in {', '.join(files)}. "
+        "Call search_documents and answer from those passages."
+    )
+
+
+@dataclass
+class ToolOutcome:
+    text: str  # what the model reads
+    passages: list[dict] = field(default_factory=list)  # search results (for citations)
+    table: dict | None = None  # query result (shown in the UI)
+
+
+def _argument(args: dict, key: str) -> str | None:
+    value = args.get(key)
+    return value.strip() if isinstance(value, str) and len(value.strip()) >= 2 else None
+
+
+async def _run_tool(name: str, args: dict, first_number: int, allowed: set[str]) -> ToolOutcome:
     """Run one tool call. Problems go back to the model as the result, so it can recover."""
-    if name != documents.NAME:
-        return f"Error: unknown tool {name!r}. The only tool is {documents.NAME}.", []
-    query = args.get("query")
-    if not isinstance(query, str) or len(query.strip()) < 2:
-        return "Error: 'query' must be a non-empty string.", []
-    results = await asyncio.to_thread(documents.run_search, query.strip())  # sync code, off the event loop
-    return documents.format_results(results, first_number)
+    if name not in allowed:
+        return ToolOutcome(f"Error: unknown tool {name!r}. Available: {', '.join(sorted(allowed))}.")
+    if name == documents.NAME:
+        query = _argument(args, "query")
+        if query is None:
+            return ToolOutcome("Error: 'query' must be a non-empty string.")
+        results = await asyncio.to_thread(documents.run_search, query)  # sync code, off the event loop
+        text, passages = documents.format_results(results, first_number)
+        return ToolOutcome(text, passages=passages)
+    sql = _argument(args, "sql")
+    if sql is None:
+        return ToolOutcome("Error: 'sql' must be a non-empty SQL query.")
+    text, table = await asyncio.to_thread(tables.run_query, sql)
+    return ToolOutcome(text, table=table)
 
 
 async def run_agent(history: list[ChatMessage]) -> AsyncIterator[dict]:
-    """Yield events: tool_call, tool_result, token, sources."""
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *_history(history)]
+    """Yield events: tool_call, tool_result, table, token, sources."""
+    catalog = get_catalog()
+    await asyncio.to_thread(catalog.refresh)  # reloads only if a spreadsheet changed
+    tools = [documents.TOOL] + ([tables.TOOL] if catalog.tables else [])
+    allowed = {t["function"]["name"] for t in tools}
+    prompt = SYSTEM_PROMPT + (SPREADSHEET_PROMPT.format(schema=catalog.schema_text()) if catalog.tables else "")
+    prompt += await _search_hint(history)
+
+    messages = [{"role": "system", "content": prompt}, *_history(history)]
     passages: dict[int, dict] = {}  # every passage shown to the model in this answer, by number
     answer = ""
 
@@ -68,7 +135,7 @@ async def run_agent(history: list[ChatMessage]) -> AsyncIterator[dict]:
         stream = await _client.chat(
             model=settings.chat_model,
             messages=messages,
-            tools=None if last_round else [documents.TOOL],  # last round: no tools, so it must answer
+            tools=None if last_round else tools,  # last round: no tools, so it must answer
             stream=True,
             think=settings.think,
             options={"num_ctx": settings.num_ctx},
@@ -99,10 +166,13 @@ async def run_agent(history: list[ChatMessage]) -> AsyncIterator[dict]:
         for call in calls:
             name, args = call.function.name, dict(call.function.arguments or {})
             yield {"type": "tool_call", "name": name, "arguments": args}
-            text, found = await _run_tool(name, args, first_number=len(passages) + 1)
-            passages.update({p["number"]: p for p in found})
-            messages.append({"role": "tool", "tool_name": name, "content": text})
-            yield {"type": "tool_result", "name": name, "count": len(found)}
+            outcome = await _run_tool(name, args, len(passages) + 1, allowed)
+            passages.update({p["number"]: p for p in outcome.passages})
+            messages.append({"role": "tool", "tool_name": name, "content": outcome.text})
+            count = len(outcome.table["rows"]) if outcome.table else len(outcome.passages)
+            yield {"type": "tool_result", "name": name, "count": count, "ok": not outcome.text.startswith("Error")}
+            if outcome.table:
+                yield outcome.table
 
     cited = sorted(n for n in cited_numbers(answer) if n in passages)
     if cited:
