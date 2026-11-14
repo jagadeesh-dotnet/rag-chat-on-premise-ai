@@ -1,3 +1,6 @@
 fastapi[standard]==0.162.7
 pydantic-settings==2.16.3
-ollama
+ollama==0.6.3
+pymupdf==2.1
+python-docx==1.2.0
+pywin32==312; sys_platform == "win32"

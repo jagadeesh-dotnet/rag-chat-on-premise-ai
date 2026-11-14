@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:4200"]
     data_dir: Path = PROJECT_ROOT / "data"
     think: bool = False
+    docs_dir: Path = PROJECT_ROOT / "data" / "docs"
+    cache_dir: Path = PROJECT_ROOT / "data" / "cache"
+    chunk_size: int = 1200
+    chunk_overlap: int = 200
 
 
 # Shared settings instance
