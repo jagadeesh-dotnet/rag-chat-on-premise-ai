@@ -13,6 +13,7 @@ import duckdb
 
 from app.config import settings
 from app.ingest.loaders import SPREADSHEETS
+from app.row_filter import apply_row_filters
 from app.sql_guard import check_select
 from app.tables.loader import read_spreadsheet
 
@@ -111,17 +112,23 @@ class TableCatalog:
         self._con, self.tables = con, infos
         log.info("Spreadsheet tables: %s", {n: i.rows for n, i in infos.items()})
 
-    def schema_text(self, allowed: set[str] | None = None) -> str:
-        """Tables, columns, types and sample values, for the model's prompt (only tables the user may use)."""
+    def schema_text(self, allowed: set[str] | None = None, restricted: set[str] | frozenset[str] = frozenset()) -> str:
+        """Tables, columns, types and sample values, for the model's prompt (only tables the user may use).
+
+        restricted: tables filtered by row rules for this user. Their row count and sample values are left
+        out: both come from all rows, so they would show data the user can't see (e.g. other regions).
+        """
         names = self.visible(allowed)
         if not names:
             return "(no spreadsheets)"
         parts = []
         for info in (self.tables[n] for n in names):
-            lines = [f"Table {info.name} ({info.rows} rows, from {info.source}):"]
+            hidden = info.name in restricted
+            size = "only your rows" if hidden else f"{info.rows} rows"
+            lines = [f"Table {info.name} ({size}, from {info.source}):"]
             for column, kind in info.columns:
-                examples = ", ".join(info.samples.get(column, []))
-                lines.append(f"  - {column} {kind}  e.g. {examples}")
+                examples = "" if hidden else "  e.g. " + ", ".join(info.samples.get(column, []))
+                lines.append(f"  - {column} {kind}{examples}")
             parts.append("\n".join(lines))
         return "\n\n".join(parts)
 
@@ -129,16 +136,19 @@ class TableCatalog:
         """Table names the user may use (allowed=None: all)."""
         return [name for name in self.tables if allowed is None or name in allowed]
 
-    def query(self, sql: str, allowed: set[str] | None = None) -> dict:
-        """Run a guarded SELECT. Returns columns, rows (max max_rows) and whether it was cut off.
+    def query(self, sql: str, allowed: set[str] | None = None, conditions: dict | None = None) -> dict:
+        """Run a guarded SELECT. Returns columns, rows (max max_rows), whether it was cut off, and which
+        tables were filtered by row rules ("restricted").
 
         allowed: the tables this user may query. The guard rejects every other table, so a forbidden
         table looks exactly like one that doesn't exist.
+        conditions: row-level filters per table (app/data_access.py), applied by rewriting the SQL.
         """
         with self._lock:
             if self._con is None:
                 raise QueryError("No spreadsheet tables are loaded.")
-            check_select(sql, "duckdb", set(self.visible(allowed)))
+            tree = check_select(sql, "duckdb", set(self.visible(allowed)))
+            sql, restricted = apply_row_filters(tree, conditions or {}, "duckdb")
             timer = threading.Timer(self._timeout_s, self._con.interrupt)
             timer.start()
             try:
@@ -155,7 +165,7 @@ class TableCatalog:
                 timer.cancel()
         truncated = len(rows) > self._max_rows
         rows = [[_json_value(v) for v in row] for row in rows[: self._max_rows]]
-        return {"columns": columns, "rows": rows, "truncated": truncated}
+        return {"columns": columns, "rows": rows, "truncated": truncated, "restricted": restricted}
 
 
 @lru_cache

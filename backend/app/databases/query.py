@@ -11,6 +11,7 @@ from app.config import settings
 from app.databases.connection import connect_read_only
 from app.databases.registry import DatabaseConfig, load_databases
 from app.databases.schema import render, schema_cache
+from app.row_filter import apply_row_filters
 from app.sql_guard import GuardError, check_select
 
 SCHEMAS = frozenset({"dbo"})
@@ -55,10 +56,15 @@ def _error_message(exc: pyodbc.Error) -> str:
     return re.sub(r"\s*\(\d+\)\s*\(SQL\w+\)\s*$", "", text).strip()
 
 
-def run_select(db: DatabaseConfig, sql: str) -> dict:
+def run_select(db: DatabaseConfig, sql: str, conditions: dict | None = None) -> dict:
+    """Guard, apply row filters (conditions, see app/data_access.py), run as chat_reader.
+
+    Returns columns, rows, whether the result was cut off and which tables were filtered ("restricted").
+    """
     tables = schema_cache.tables(db)
     known = {t.name.lower() for t in tables}
-    check_select(sql, "tsql", known, SCHEMAS)
+    tree = check_select(sql, "tsql", known, SCHEMAS)
+    sql, restricted = apply_row_filters(tree, conditions or {}, "tsql")
 
     try:
         with connect_read_only(db) as conn:
@@ -74,12 +80,13 @@ def run_select(db: DatabaseConfig, sql: str) -> dict:
         if "Invalid column name" in message or "Invalid object name" in message:
             # Self-healing: show the whole schema, not only the tables used - the fix is often a table the
             # query didn't use yet (e.g. pub_id is in titles, not titleauthor). Measured: fewer retries.
-            message += "\n\nCall get_schema first next time. The database schema:\n" + render(db, tables)
+            schema = render(db, tables, redact=set(conditions or {}))
+            message += "\n\nCall get_schema first next time. The database schema:\n" + schema
         raise DatabaseError(message) from exc
 
     truncated = len(rows) > settings.max_result_rows
     rows = [[_json_value(v) for v in row] for row in rows[: settings.max_result_rows]]
-    return {"columns": columns, "rows": rows, "truncated": truncated}
+    return {"columns": columns, "rows": rows, "truncated": truncated, "restricted": restricted}
 
 
 __all__ = ["DatabaseError", "GuardError", "get_database", "run_select", "visible_databases"]

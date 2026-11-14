@@ -3,6 +3,7 @@
 import pyodbc
 
 from app.auth.access import Access
+from app.data_access import database_conditions, restriction_note
 from app.databases.query import (
     DatabaseError,
     GuardError,
@@ -71,7 +72,8 @@ def run_get_schema(database: str, access: Access) -> tuple[str, int]:
         return f"Error: {exc}", 0
     except pyodbc.Error:
         return f"Error: database {database!r} can't be reached right now.", 0
-    return render(db, tables), len(tables)
+    restricted = set(database_conditions(access, db.name, tables))
+    return render(db, tables, redact=restricted), len(tables)
 
 
 def run_sql(database: str, sql: str, access: Access) -> tuple[str, dict | None]:
@@ -80,16 +82,18 @@ def run_sql(database: str, sql: str, access: Access) -> tuple[str, dict | None]:
         return NO_ACCESS, None
     try:
         db = get_database(database, access)
-        result = run_select(db, sql)
+        conditions = database_conditions(access, db.name, schema_cache.tables(db))
+        result = run_select(db, sql, conditions)
     except (GuardError, DatabaseError) as exc:
         return f"Error: {exc}", None
     except pyodbc.Error:
         return f"Error: database {database!r} can't be reached right now.", None
 
     source = f"Source: the {db.name} database. Name this source in your answer."
+    note = restriction_note(result["restricted"])
     if not result["rows"]:
-        return f"{source}\nThe query returned no rows.", None
-    text = source + "\n" + to_markdown(result["columns"], result["rows"])
+        return f"{source}\nThe query returned no rows.{note}", None
+    text = source + "\n" + to_markdown(result["columns"], result["rows"]) + note
     if result["truncated"]:
         text += f"\n(Only the first {len(result['rows'])} rows are shown.)"
     return text, {"type": "table", "database": db.name, "sql": sql, **result}

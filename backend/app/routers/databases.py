@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.auth.access import Access
 from app.auth.deps import CurrentAccess
+from app.data_access import database_conditions
 from app.databases.connection import is_reachable
 from app.databases.query import (
     DatabaseError,
@@ -51,14 +52,16 @@ def schema(access: CurrentAccess, name: str, refresh: bool = False) -> dict:
         tables = schema_cache.tables(db, force=refresh)
     except pyodbc.Error as exc:
         raise HTTPException(status_code=503, detail=f"Database {name!r} can't be reached") from exc
-    return {"name": db.name, "tables": len(tables), "schema": render(db, tables)}
+    restricted = set(database_conditions(access, db.name, tables))
+    return {"name": db.name, "tables": len(tables), "schema": render(db, tables, redact=restricted)}
 
 
 @router.post("/{name}/query")
 def query(access: CurrentAccess, name: str, request: QueryRequest) -> dict:
+    """The same row filters apply here as in the chat: a direct API call can't see more."""
     db = _database(name, access)
     try:
-        return run_select(db, request.sql)
+        return run_select(db, request.sql, database_conditions(access, db.name, schema_cache.tables(db)))
     except (GuardError, DatabaseError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except pyodbc.Error as exc:

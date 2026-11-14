@@ -182,7 +182,8 @@ async def run_agent(history: list[ChatMessage], access: Access) -> AsyncIterator
     tools = [documents.TOOL, tables.TOOL, databases.SCHEMA_TOOL, databases.SQL_TOOL]
     allowed = {t["function"]["name"] for t in tools}
     prompt = SYSTEM_PROMPT
-    prompt += SPREADSHEET_PROMPT.format(schema=catalog.schema_text(spreadsheets)) if has_tables else ""
+    # schema_for hides row counts and sample values of tables filtered by row rules for this user
+    prompt += SPREADSHEET_PROMPT.format(schema=tables.schema_for(access)) if has_tables else ""
     prompt += DATABASE_PROMPT.format(databases=databases.database_list(access)) if has_databases else ""
     prompt += await _search_hint(history, access)
 
