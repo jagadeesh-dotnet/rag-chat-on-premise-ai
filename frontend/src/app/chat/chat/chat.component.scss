@@ -10,5 +10,14 @@
 .sources { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid #ddd; font-size: 0.85em; color: #444; }
 .sources li { margin: 2px 0; cursor: help; }
 .sources .num { color: #2563eb; font-weight: 600; margin-right: 4px; }
+.result { margin: 4px 0 8px; }
+.table-wrap { max-height: 320px; overflow: auto; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
+.result table { border-collapse: collapse; font-size: 0.85em; width: 100%; }
+.result th, .result td { padding: 4px 8px; border-bottom: 1px solid #eee; text-align: left; white-space: nowrap; }
+.result th { position: sticky; top: 0; background: #f8f8f8; font-weight: 600; }
+.result td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.result .note { font-size: 0.8em; color: #666; margin: 4px 0 0; }
+.result .sql { font-size: 0.8em; color: #555; margin-top: 4px; }
+.result .sql pre { white-space: pre-wrap; background: #f6f6f6; padding: 6px 8px; border-radius: 4px; margin: 4px 0 0; }
 .composer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #ddd; }
 .composer textarea { flex: 1; resize: none; font: inherit; padding: 8px; }

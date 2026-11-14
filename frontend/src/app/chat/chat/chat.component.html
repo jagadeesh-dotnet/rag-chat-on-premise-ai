@@ -8,6 +8,25 @@
         {{ m.thinking }}
       </details>
       <div *ngFor="let step of m.steps" class="step">🔎 {{ step }}</div>
+      <div *ngFor="let t of m.tables" class="result">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th *ngFor="let c of t.columns">{{ c }}</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of t.rows">
+                <td *ngFor="let v of row" [class.numeric]="isNumber(v)">{{ formatCell(v) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p *ngIf="t.truncated" class="note">Only the first {{ t.rows.length }} rows are shown.</p>
+        <details class="sql">
+          <summary>SQL</summary>
+          <pre>{{ t.sql }}</pre>
+        </details>
+      </div>
       <div class="content">{{ m.content || (streaming ? '…' : '') }}</div>
       <ol *ngIf="m.sources?.length" class="sources">
         <li *ngFor="let s of m.sources" [title]="s.snippet">

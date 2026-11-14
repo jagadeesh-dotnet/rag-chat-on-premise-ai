@@ -12,12 +12,21 @@ export interface Source {
   snippet: string;
 }
 
+/** Result of a SQL query over the spreadsheets. */
+export interface TableResult {
+  sql: string;
+  columns: string[];
+  rows: (string | number | null)[][];
+  truncated: boolean;
+}
+
 /** One line of the backend's NDJSON stream. */
 export type ChatEvent =
   | { type: 'thinking'; content: string }
   | { type: 'token'; content: string }
   | { type: 'tool_call'; name: string; arguments: { query?: string } }
-  | { type: 'tool_result'; name: string; count: number }
+  | { type: 'tool_result'; name: string; count: number; ok: boolean }
+  | ({ type: 'table' } & TableResult)
   | { type: 'sources'; items: Source[] }
   | { type: 'done' }
   | { type: 'error'; message: string };

@@ -1,7 +1,7 @@
 import { AfterViewChecked, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { ChatService } from '../chat.service';
-import { ChatEvent, ChatMessage, Source } from '../chat.models';
+import { ChatEvent, ChatMessage, Source, TableResult } from '../chat.models';
 
 
 /** A message as shown on screen: the API fields plus display-only state. */
@@ -10,7 +10,14 @@ interface UiMessage extends ChatMessage {
   error?: boolean;
   steps?: string[]; // e.g. 'Searched: "clause 6.2" (5 passages)'
   sources?: Source[];
+  tables?: TableResult[];
 }
+
+const STEP_LABELS: Record<string, [string, string, string]> = {
+  // tool: [while running, when done, what it counts]
+  search_documents: ['Searching', 'Searched', 'passages'],
+  query_tables: ['Querying spreadsheets', 'Queried spreadsheets', 'rows'],
+};
 
 @Component({
   selector: 'app-chat',
@@ -89,16 +96,24 @@ export class ChatComponent implements AfterViewChecked, OnDestroy {
         answer.content += event.content;
         this.scrollPending = true;
         break;
-      case 'tool_call':
-        answer.steps = [...(answer.steps ?? []), `Searching: "${event.arguments.query ?? ''}"`];
+      case 'tool_call': {
+        const [running] = STEP_LABELS[event.name] ?? ['Running ' + event.name];
+        const detail = event.arguments.query ? `: "${event.arguments.query}"` : '';
+        answer.steps = [...(answer.steps ?? []), running + detail];
         this.scrollPending = true;
         break;
+      }
       case 'tool_result': {
+        const [running, done, unit] = STEP_LABELS[event.name] ?? ['Running', 'Ran', 'results'];
+        const outcome = !event.ok ? 'error, retrying' : event.count ? `${event.count} ${unit}` : 'nothing found';
         const steps = answer.steps ?? [];
-        const found = event.count ? `${event.count} passages` : 'nothing found';
-        steps[steps.length - 1] = steps[steps.length - 1].replace('Searching', 'Searched') + ` (${found})`;
+        steps[steps.length - 1] = steps[steps.length - 1].replace(running, done) + ` (${outcome})`;
         break;
       }
+      case 'table':
+        answer.tables = [...(answer.tables ?? []), event];
+        this.scrollPending = true;
+        break;
       case 'sources':
         answer.sources = event.items;
         this.scrollPending = true;
@@ -109,6 +124,16 @@ export class ChatComponent implements AfterViewChecked, OnDestroy {
       case 'done':
         break;
     }
+  }
+
+  isNumber(value: unknown): boolean {
+    return typeof value === 'number'; // `typeof` isn't allowed in Angular 16 templates
+  }
+
+  /** 1565804.3232 -> "1,565,804.32"; text stays as it is. */
+  formatCell(value: string | number | null): string {
+    if (value === null) return '';
+    return typeof value === 'number' ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value;
   }
 
   private fail(answer: UiMessage, message: string): void {
