@@ -1,0 +1,52 @@
+<section>
+  <div class="bar">
+    <h2>Roles</h2>
+    <button type="button" class="primary" (click)="edit()" *ngIf="!editing">＋ New role</button>
+  </div>
+  <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+
+  <form class="panel" *ngIf="editing" (ngSubmit)="save()" #form="ngForm">
+    <div class="row">
+      <label>
+        Name
+        <input name="name" [(ngModel)]="editing.name" [readonly]="!editing.isNew" required pattern="[a-zA-Z0-9_\-]+" />
+      </label>
+      <label class="grow">Description <input name="description" [(ngModel)]="editing.description" /></label>
+    </div>
+    <fieldset *ngFor="let k of kinds">
+      <legend>{{ k.label }} <span class="hint">· {{ k.hint }}</span></legend>
+      <label class="chip" *ngFor="let value of options(k.kind)">
+        <input type="checkbox" [checked]="has(k.kind, value)" (change)="toggle(k.kind, value)" />
+        {{ value === '*' ? 'All' : value }}
+      </label>
+    </fieldset>
+    <div class="actions">
+      <button type="submit" class="primary" [disabled]="!form.valid">Save</button>
+      <button type="button" (click)="editing = null">Cancel</button>
+    </div>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Role</th><th>Folders</th><th>Spreadsheets</th><th>Databases</th><th>Users</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of roles">
+          <td><strong>{{ r.name }}</strong><div class="hint">{{ r.description }}</div></td>
+          <td>{{ summary(r, 'folder') }}</td>
+          <td>{{ summary(r, 'spreadsheet') }}</td>
+          <td>{{ summary(r, 'database') }}</td>
+          <td>{{ r.members }}</td>
+          <td class="row-actions">
+            <ng-container *ngIf="!r.builtin">
+              <button type="button" (click)="edit(r)">Edit</button>
+              <button type="button" class="danger" (click)="remove(r)">Delete</button>
+            </ng-container>
+            <span class="hint" *ngIf="r.builtin">built-in</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>

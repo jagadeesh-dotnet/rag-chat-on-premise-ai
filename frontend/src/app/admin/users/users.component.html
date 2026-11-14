@@ -1,0 +1,59 @@
+<section>
+  <div class="bar">
+    <h2>Users</h2>
+    <button type="button" class="primary" (click)="openNew()" *ngIf="!showNew">＋ New user</button>
+  </div>
+
+  <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+  <p class="notice" *ngIf="notice">{{ notice }} <span class="hint">(share it securely; it is shown only once)</span></p>
+
+  <form class="panel" *ngIf="showNew" (ngSubmit)="create()" #form="ngForm">
+    <div class="row">
+      <label>Username <input name="username" [(ngModel)]="draft.username" required pattern="[A-Za-z0-9._\-]+" /></label>
+      <label>Display name <input name="display_name" [(ngModel)]="draft.display_name" /></label>
+      <label>Temporary password <input name="pw" [(ngModel)]="draft.temporary_password" required minlength="10" /></label>
+    </div>
+    <div class="chips">
+      <span class="label">Roles:</span>
+      <label class="chip" *ngFor="let r of roles">
+        <input type="checkbox" [checked]="draft.roles.includes(r.name)" (change)="toggleDraftRole(r.name)" /> {{ r.name }}
+      </label>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary" [disabled]="!form.valid">Create</button>
+      <button type="button" (click)="showNew = false">Cancel</button>
+    </div>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>User</th><th>Roles</th><th>Status</th><th>Last sign-in</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let u of users" [class.inactive]="!u.is_active">
+          <td>
+            <strong>{{ u.username }}</strong><span class="you" *ngIf="u.username === me"> (you)</span>
+            <div class="hint" *ngIf="u.display_name !== u.username">{{ u.display_name }}</div>
+          </td>
+          <td>
+            <label class="chip" *ngFor="let r of roles">
+              <input type="checkbox" [checked]="u.roles.includes(r.name)" (change)="toggleRole(u, r.name)" /> {{ r.name }}
+            </label>
+          </td>
+          <td>
+            {{ u.is_active ? 'Active' : 'Deactivated' }}
+            <div class="hint" *ngIf="u.must_change_password">must change password</div>
+          </td>
+          <td>{{ u.last_login ? (u.last_login | date: 'short') : '—' }}</td>
+          <td class="row-actions">
+            <button type="button" (click)="resetPassword(u)">Reset password</button>
+            <button type="button" [class.danger]="u.is_active" (click)="toggleActive(u)">
+              {{ u.is_active ? 'Deactivate' : 'Activate' }}
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
