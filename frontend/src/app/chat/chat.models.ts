@@ -14,6 +14,7 @@ export interface Source {
 
 /** Result of a SQL query over the spreadsheets. */
 export interface TableResult {
+  database?: string; // SQL Server database; absent for spreadsheet results
   sql: string;
   columns: string[];
   rows: (string | number | null)[][];
@@ -24,7 +25,7 @@ export interface TableResult {
 export type ChatEvent =
   | { type: 'thinking'; content: string }
   | { type: 'token'; content: string }
-  | { type: 'tool_call'; name: string; arguments: { query?: string } }
+  | { type: 'tool_call'; name: string; arguments: { query?: string; database?: string; sql?: string } }
   | { type: 'tool_result'; name: string; count: number; ok: boolean }
   | ({ type: 'table' } & TableResult)
   | { type: 'sources'; items: Source[] }

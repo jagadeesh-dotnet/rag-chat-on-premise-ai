@@ -23,7 +23,7 @@
         </div>
         <p *ngIf="t.truncated" class="note">Only the first {{ t.rows.length }} rows are shown.</p>
         <details class="sql">
-          <summary>SQL</summary>
+          <summary>SQL · {{ t.database ?? 'spreadsheets' }}</summary>
           <pre>{{ t.sql }}</pre>
         </details>
       </div>

@@ -17,6 +17,8 @@ const STEP_LABELS: Record<string, [string, string, string]> = {
   // tool: [while running, when done, what it counts]
   search_documents: ['Searching', 'Searched', 'passages'],
   query_tables: ['Querying spreadsheets', 'Queried spreadsheets', 'rows'],
+  get_schema: ['Reading tables of', 'Read tables of', 'tables'],
+  run_sql: ['Querying', 'Queried', 'rows'],
 };
 
 @Component({
@@ -98,7 +100,8 @@ export class ChatComponent implements AfterViewChecked, OnDestroy {
         break;
       case 'tool_call': {
         const [running] = STEP_LABELS[event.name] ?? ['Running ' + event.name];
-        const detail = event.arguments.query ? `: "${event.arguments.query}"` : '';
+        const { query, database } = event.arguments;
+        const detail = query ? `: "${query}"` : database ? ` ${database}` : '';
         answer.steps = [...(answer.steps ?? []), running + detail];
         this.scrollPending = true;
         break;
