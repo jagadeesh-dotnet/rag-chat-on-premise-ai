@@ -46,6 +46,8 @@ Spreadsheet tables (query them with query_tables, DuckDB SQL):
 Rules for spreadsheets (query_tables):
 - Use query_tables only for numbers computed from these spreadsheet tables: totals, counts, averages, rankings, \
 trends. Questions about the SQL Server databases below use get_schema/run_sql instead.
+- Run a new query for every number you report, even if earlier answers contain related numbers: never add up \
+or recalculate numbers from previous answers yourself.
 - Rows are often order lines, not orders: count orders, customers or products with COUNT(DISTINCT id_column), \
 never COUNT(*).
 - Show names, not IDs (a name column instead of an ID column). For "top N" use ORDER BY ... DESC LIMIT N.
@@ -68,6 +70,8 @@ Rules for databases:
 N rows - joining first can multiply rows and inflate totals.
 - Use the formulas from the notes (e.g. revenue). If a query fails, read the error and fix the SQL.
 - The result table is shown to the user automatically: state the key numbers in words, don't repeat the table."""
+
+FOLLOW_UP_REMINDER = "\n\n(Look this up with a tool; don't reuse numbers from earlier answers.)"
 
 _client = AsyncClient(host=settings.ollama_host)
 _CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")  # [1], [2, 3]
@@ -165,6 +169,11 @@ async def run_agent(history: list[ChatMessage]) -> AsyncIterator[dict]:
     prompt += await _search_hint(history)
 
     messages = [{"role": "system", "content": prompt}, *_history(history)]
+    if sum(m.role == "user" for m in history) > 1 and messages[-1]["role"] == "user":
+        # Follow-ups: the model reused or added up numbers from earlier answers instead of querying - rules in
+        # the system prompt (top or bottom) didn't help, words in the user's own message did (measured 3/3).
+        # Only the copy sent to the model is changed; the saved conversation keeps the user's text.
+        messages[-1] = {"role": "user", "content": messages[-1]["content"] + FOLLOW_UP_REMINDER}
     passages: dict[int, dict] = {}  # every passage shown to the model in this answer, by number
     answer = ""
 
