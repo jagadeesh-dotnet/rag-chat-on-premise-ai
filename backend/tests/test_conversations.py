@@ -1,20 +1,9 @@
 import uuid
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
-from app.config import settings
 from app.routers import conversations
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "chat_db_path", tmp_path / "chat.db")
-    app = FastAPI()
-    app.include_router(conversations.router)  # only this router: no Qdrant or Ollama needed
-    return TestClient(app)
-
+from tests.conftest import add_user, make_client, signed_in
 
 MESSAGES = [
     {"role": "user", "content": "Which category sold most in the spreadsheet?"},
@@ -25,6 +14,16 @@ MESSAGES = [
         "tables": [{"sql": "SELECT 1", "columns": ["category"], "rows": [["Office Supplies"]], "truncated": False}],
     },
 ]
+
+
+@pytest.fixture
+def client(isolated):
+    add_user("alice", [])
+    return signed_in(make_client(conversations), "alice")
+
+
+def test_requires_sign_in(isolated):
+    assert make_client(conversations).get("/api/conversations").status_code == 401
 
 
 def test_save_list_get_rename_delete(client):
@@ -44,6 +43,20 @@ def test_save_list_get_rename_delete(client):
 
     assert client.delete(f"/api/conversations/{cid}").status_code == 204
     assert client.get(f"/api/conversations/{cid}").status_code == 404
+
+
+def test_conversations_are_private(client):
+    cid = str(uuid.uuid4())
+    client.put(f"/api/conversations/{cid}", json={"messages": MESSAGES})
+
+    add_user("bob", [])
+    bob = signed_in(make_client(conversations), "bob")
+    assert bob.get("/api/conversations").json() == []
+    assert bob.get(f"/api/conversations/{cid}").status_code == 404  # looks like it doesn't exist
+    assert bob.patch(f"/api/conversations/{cid}", json={"title": "mine now"}).status_code == 404
+    assert bob.delete(f"/api/conversations/{cid}").status_code == 404
+    assert bob.put(f"/api/conversations/{cid}", json={"messages": []}).status_code == 404  # can't overwrite
+    assert client.get(f"/api/conversations/{cid}").json()["messages"] == MESSAGES  # alice's chat untouched
 
 
 def test_newest_first(client):
@@ -70,8 +83,7 @@ def test_long_titles_are_shortened(client):
     ],
 )
 def test_invalid_requests_are_rejected(client, method, path, body):
-    response = client.request(method, path, json=body)
-    assert response.status_code == 422
+    assert client.request(method, path, json=body).status_code == 422
 
 
 def test_unknown_conversation_is_404(client):

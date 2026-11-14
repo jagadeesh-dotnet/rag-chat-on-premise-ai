@@ -111,12 +111,13 @@ class TableCatalog:
         self._con, self.tables = con, infos
         log.info("Spreadsheet tables: %s", {n: i.rows for n, i in infos.items()})
 
-    def schema_text(self) -> str:
-        """Tables, columns, types and sample values, for the model's prompt."""
-        if not self.tables:
+    def schema_text(self, allowed: set[str] | None = None) -> str:
+        """Tables, columns, types and sample values, for the model's prompt (only tables the user may use)."""
+        names = self.visible(allowed)
+        if not names:
             return "(no spreadsheets)"
         parts = []
-        for info in self.tables.values():
+        for info in (self.tables[n] for n in names):
             lines = [f"Table {info.name} ({info.rows} rows, from {info.source}):"]
             for column, kind in info.columns:
                 examples = ", ".join(info.samples.get(column, []))
@@ -124,12 +125,20 @@ class TableCatalog:
             parts.append("\n".join(lines))
         return "\n\n".join(parts)
 
-    def query(self, sql: str) -> dict:
-        """Run a guarded SELECT. Returns columns, rows (max max_rows) and whether it was cut off."""
+    def visible(self, allowed: set[str] | None) -> list[str]:
+        """Table names the user may use (allowed=None: all)."""
+        return [name for name in self.tables if allowed is None or name in allowed]
+
+    def query(self, sql: str, allowed: set[str] | None = None) -> dict:
+        """Run a guarded SELECT. Returns columns, rows (max max_rows) and whether it was cut off.
+
+        allowed: the tables this user may query. The guard rejects every other table, so a forbidden
+        table looks exactly like one that doesn't exist.
+        """
         with self._lock:
             if self._con is None:
                 raise QueryError("No spreadsheet tables are loaded.")
-            check_select(sql, "duckdb", set(self.tables))
+            check_select(sql, "duckdb", set(self.visible(allowed)))
             timer = threading.Timer(self._timeout_s, self._con.interrupt)
             timer.start()
             try:
@@ -137,7 +146,9 @@ class TableCatalog:
                 columns = [d[0] for d in cursor.description]
                 rows = cursor.fetchmany(self._max_rows + 1)
             except duckdb.InterruptException as exc:
-                raise QueryError(f"The query took longer than {self._timeout_s:g} s and was stopped.") from exc
+                raise QueryError(
+                    f"The query took longer than {self._timeout_s:g} s and was stopped."
+                ) from exc
             except duckdb.Error as exc:
                 raise QueryError(str(exc).splitlines()[0]) from exc
             finally:

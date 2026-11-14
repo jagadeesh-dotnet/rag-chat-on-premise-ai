@@ -32,10 +32,14 @@ def _match(key: str, value: str) -> models.FieldCondition:
     return models.FieldCondition(key=key, match=models.MatchValue(value=value))
 
 
-def _filter(source: str | None = None, idents: list[str] | None = None) -> models.Filter | None:
+def _filter(
+    source: str | None = None, idents: list[str] | None = None, allowed: list[str] | None = None
+) -> models.Filter | None:
     must: list[models.Condition] = []
     if source:
         must.append(_match("source", source))
+    if allowed is not None:  # permissions: only files this user may read can come back at all
+        must.append(models.FieldCondition(key="source", match=models.MatchAny(any=allowed)))
     if idents:
         must.append(models.FieldCondition(key="idents", match=models.MatchAny(any=idents)))
     return models.Filter(must=must) if must else None
@@ -124,9 +128,19 @@ class DocumentStore:
         ).points
 
     def search(
-        self, query: str, k: int, source: str | None = None, min_score: float | None = None
+        self,
+        query: str,
+        k: int,
+        source: str | None = None,
+        min_score: float | None = None,
+        allowed: list[str] | None = None,
     ) -> list[dict]:
-        """Hybrid search: meaning (dense) + exact words (BM25) + clause numbers, fused with RRF."""
+        """Hybrid search: meaning (dense) + exact words (BM25) + clause numbers, fused with RRF.
+
+        allowed: the sources the user may read (None = no restriction, [] = nothing).
+        """
+        if allowed is not None and not allowed:
+            return []
         min_score = settings.min_score if min_score is None else min_score
         dense_vector = embed_query(query)  # outside the lock: it calls Ollama
         indices, values = query_vector(query)
@@ -135,12 +149,12 @@ class DocumentStore:
         with self._lock:
             if not self._client.collection_exists(self._collection):
                 return []
-            rankings = {"dense": self._query(dense_vector, DENSE, _filter(source))}
+            rankings = {"dense": self._query(dense_vector, DENSE, _filter(source, allowed=allowed))}
             if indices:
                 sparse = models.SparseVector(indices=indices, values=values)
-                rankings["sparse"] = self._query(sparse, SPARSE, _filter(source))
+                rankings["sparse"] = self._query(sparse, SPARSE, _filter(source, allowed=allowed))
             if wanted:  # only chunks containing the clause number, ordered by meaning
-                rankings["ident"] = self._query(dense_vector, DENSE, _filter(source, wanted))
+                rankings["ident"] = self._query(dense_vector, DENSE, _filter(source, wanted, allowed))
 
             # Reciprocal Rank Fusion: each list adds weight / (60 + rank). Only ranks matter, not scores.
             fused: dict[str, float] = {}

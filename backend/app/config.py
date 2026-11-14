@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
     qdrant_collection: str = "documents"
     chat_db_path: Path = PROJECT_ROOT / "data" / "chat.db"  # saved conversations
+    app_db_path: Path = PROJECT_ROOT / "data" / "app.db"  # users, roles, sessions, audit log
+    session_hours: int = 12
+    session_cookie: str = "lc_session"
+    cookie_secure: bool = False  # True when served over HTTPS (the cookie is then never sent over plain HTTP)
+    lockout_attempts: int = 5  # failed logins ...
+    lockout_minutes: int = 15  # ... within this window lock the account for the rest of it
     ocr_enabled: bool = True  # read scanned PDF pages and images with RapidOCR
     ocr_min_chars: int = 50  # a page with less text than this (and an image on it) is OCR'd
     ocr_dpi: int = 200  # render resolution for OCR: higher = sharper but slower

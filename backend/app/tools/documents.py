@@ -1,5 +1,6 @@
 """The search_documents tool: its definition for the model, and the code that runs it."""
 
+from app.auth.access import Access
 from app.config import settings
 from app.ingest.store import get_store
 
@@ -33,9 +34,19 @@ TOOL = {
 }
 
 
-def run_search(query: str) -> list[dict]:
-    """Blocking (Qdrant + embedding): call it with asyncio.to_thread from async code."""
-    return get_store().search(query, k=settings.search_k)
+def allowed_sources(access: Access) -> list[str] | None:
+    """The indexed files this user may read (None = everything, for admins)."""
+    if access.is_admin:
+        return None
+    return [s for s in get_store().chunk_counts() if access.can_read_document(s)]
+
+
+def run_search(query: str, access: Access) -> list[dict]:
+    """Blocking (Qdrant + embedding): call it with asyncio.to_thread from async code.
+
+    Only the user's permitted files are searched, so forbidden passages never reach the model.
+    """
+    return get_store().search(query, k=settings.search_k, allowed=allowed_sources(access))
 
 
 def format_results(results: list[dict], first_number: int) -> tuple[str, list[dict]]:

@@ -11,31 +11,37 @@ from dataclasses import dataclass, field
 
 from ollama import AsyncClient
 
+from app.auth.access import Access
 from app.config import settings
-from app.databases.registry import load_databases
+from app.databases.query import visible_databases
 from app.schemas import ChatMessage
 from app.tables.catalog import get_catalog
 from app.tools import databases, documents, tables
 
+# No real source names in here: this text goes to every user, and naming a database or spreadsheet would tell
+# users without access that it exists (and gave the model a name to invent an answer around).
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions from the user's own files. \
 Never answer a factual question from your own knowledge: unless it is small talk (greetings, thanks, \
 questions about yourself), use a tool first.
 
+You can only use the tools you have and the sources listed in this prompt - they are exactly what this user \
+is allowed to see. If a question needs data you have no tool or source for, say you don't have access to that \
+information. Never guess or invent numbers, names or citations.
+
 Rules for documents (search_documents):
 - Use search_documents for anything written in documents: policies, rules, procedures, HR topics such as \
-leave, standards such as ISO 27001, manuals, papers - also when it was discussed earlier in the conversation, \
-so the answer can be cited.
+leave, standards, manuals, papers - also when it was discussed earlier in the conversation, so the answer can \
+be cited.
 - Write the search query as a standalone question: resolve "it", "that" or "again" from the conversation, \
 and keep document names and clause or control numbers.
 - Answer only from the passages returned. Cite every fact with its passage number in square brackets, \
 like [1] or [2][3]. Never cite a number that wasn't returned.
 - If the passages don't contain the answer, say you couldn't find it in the documents. Don't make up an answer.
-- Say where something comes from: a requirement of a standard (e.g. ISO 27001 control A.6.7) is not the \
+- Say where something comes from: a requirement of a standard (a control or clause it lists) is not the \
 organisation's own policy.
-- If several sources could answer (e.g. the spreadsheet and a database both have products, categories and \
+- If several sources could answer (e.g. a spreadsheet and a database both have products, categories and \
 sales), ask the user which one they mean before querying - unless the question names the source. When you \
-answer from data, start by naming the source, e.g. "In the Northwind database, ..." or "In the Amazon sales \
-spreadsheet, ...".
+answer from data, start by naming the database or spreadsheet that the tool result says it came from.
 - Be concise."""
 
 SPREADSHEET_PROMPT = """
@@ -71,7 +77,7 @@ N rows - joining first can multiply rows and inflate totals.
 - Use the formulas from the notes (e.g. revenue). If a query fails, read the error and fix the SQL.
 - The result table is shown to the user automatically: state the key numbers in words, don't repeat the table."""
 
-FOLLOW_UP_REMINDER = "\n\n(Look this up with a tool; don't reuse numbers from earlier answers.)"
+FOLLOW_UP_REMINDER = "\n\n(Look this up with a tool; don't guess, and don't reuse numbers from earlier answers.)"
 
 _client = AsyncClient(host=settings.ollama_host)
 _CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")  # [1], [2, 3]
@@ -93,7 +99,7 @@ def _history(messages: list[ChatMessage]) -> list[dict]:
     ]
 
 
-async def _search_hint(history: list[ChatMessage]) -> str:
+async def _search_hint(history: list[ChatMessage], access: Access) -> str:
     """Pre-search with the latest question. If the documents have related passages, say where.
 
     A rule alone ("never answer from your own knowledge") isn't enough: for questions that sound general,
@@ -102,7 +108,7 @@ async def _search_hint(history: list[ChatMessage]) -> str:
     question = next((m.content for m in reversed(history) if m.role == "user"), "")
     if len(question.strip()) < 3:
         return ""
-    hits = await asyncio.to_thread(documents.run_search, question)
+    hits = await asyncio.to_thread(documents.run_search, question, access)  # only permitted files
     files = list(dict.fromkeys(h["source"] for h in hits))  # unique, best first
     if not files:
         return ""
@@ -128,7 +134,9 @@ def _argument(args: dict, key: str) -> str | None:
     return value.strip() if isinstance(value, str) and len(value.strip()) >= 2 else None
 
 
-async def _run_tool(name: str, args: dict, first_number: int, allowed: set[str]) -> ToolOutcome:
+async def _run_tool(
+    name: str, args: dict, first_number: int, allowed: set[str], access: Access
+) -> ToolOutcome:
     """Run one tool call. Problems go back to the model as the result, so it can recover."""
     if name not in allowed:
         return ToolOutcome(f"Error: unknown tool {name!r}. Available: {', '.join(sorted(allowed))}.")
@@ -136,7 +144,9 @@ async def _run_tool(name: str, args: dict, first_number: int, allowed: set[str])
         query = _argument(args, "query")
         if query is None:
             return ToolOutcome("Error: 'query' must be a non-empty string.")
-        results = await asyncio.to_thread(documents.run_search, query)  # sync code, off the event loop
+        results = await asyncio.to_thread(
+            documents.run_search, query, access
+        )  # sync code, off the event loop
         text, passages = documents.format_results(results, first_number)
         return ToolOutcome(text, passages=passages)
     if name in (databases.SCHEMA_NAME, databases.SQL_NAME):
@@ -144,35 +154,43 @@ async def _run_tool(name: str, args: dict, first_number: int, allowed: set[str])
         if database is None:
             return ToolOutcome("Error: 'database' is required (a name from the list in the system prompt).")
         if name == databases.SCHEMA_NAME:
-            text, table_count = await asyncio.to_thread(databases.run_get_schema, database)
+            text, table_count = await asyncio.to_thread(databases.run_get_schema, database, access)
             return ToolOutcome(text, count=table_count)
     sql = _argument(args, "sql")
     if sql is None:
         return ToolOutcome("Error: 'sql' must be a non-empty SQL query.")
     if name == databases.SQL_NAME:
-        text, table = await asyncio.to_thread(databases.run_sql, database, sql)
+        text, table = await asyncio.to_thread(databases.run_sql, database, sql, access)
     else:
-        text, table = await asyncio.to_thread(tables.run_query, sql)
+        text, table = await asyncio.to_thread(tables.run_query, sql, access)
     return ToolOutcome(text, table=table)
 
 
-async def run_agent(history: list[ChatMessage]) -> AsyncIterator[dict]:
-    """Yield events: tool_call, tool_result, table, token, sources."""
+async def run_agent(history: list[ChatMessage], access: Access) -> AsyncIterator[dict]:
+    """Yield events: tool_call, tool_result, table, token, sources.
+
+    The model only learns about sources this user may use: tools, table schemas and databases it may not
+    use aren't in the prompt at all, and every tool call is checked again with `access`.
+    """
     catalog = get_catalog()
     await asyncio.to_thread(catalog.refresh)  # reloads only if a spreadsheet changed
-    has_databases = bool(load_databases())
-    tools = [documents.TOOL] + ([tables.TOOL] if catalog.tables else [])
-    tools += [databases.SCHEMA_TOOL, databases.SQL_TOOL] if has_databases else []
+    spreadsheets = tables.allowed_tables(access)
+    has_tables = bool(catalog.visible(spreadsheets))
+    has_databases = bool(visible_databases(access))
+    # Every user gets every tool (their descriptions name no sources). A user without spreadsheet access gets
+    # "no access" back from query_tables; without the tool, the model invented an answer instead.
+    tools = [documents.TOOL, tables.TOOL, databases.SCHEMA_TOOL, databases.SQL_TOOL]
     allowed = {t["function"]["name"] for t in tools}
-    prompt = SYSTEM_PROMPT + (SPREADSHEET_PROMPT.format(schema=catalog.schema_text()) if catalog.tables else "")
-    prompt += DATABASE_PROMPT.format(databases=databases.database_list()) if has_databases else ""
-    prompt += await _search_hint(history)
+    prompt = SYSTEM_PROMPT
+    prompt += SPREADSHEET_PROMPT.format(schema=catalog.schema_text(spreadsheets)) if has_tables else ""
+    prompt += DATABASE_PROMPT.format(databases=databases.database_list(access)) if has_databases else ""
+    prompt += await _search_hint(history, access)
 
     messages = [{"role": "system", "content": prompt}, *_history(history)]
-    if sum(m.role == "user" for m in history) > 1 and messages[-1]["role"] == "user":
-        # Follow-ups: the model reused or added up numbers from earlier answers instead of querying - rules in
-        # the system prompt (top or bottom) didn't help, words in the user's own message did (measured 3/3).
-        # Only the copy sent to the model is changed; the saved conversation keeps the user's text.
+    if messages[-1]["role"] == "user":
+        # Without this the model reused numbers from earlier answers (follow-ups) or invented them (questions
+        # about data the user can't access). Rules in the system prompt didn't help; words in the user's own
+        # message did (measured 3/3; small talk still uses no tool). Only the copy sent to the model changes.
         messages[-1] = {"role": "user", "content": messages[-1]["content"] + FOLLOW_UP_REMINDER}
     passages: dict[int, dict] = {}  # every passage shown to the model in this answer, by number
     answer = ""
@@ -213,7 +231,7 @@ async def run_agent(history: list[ChatMessage]) -> AsyncIterator[dict]:
         for call in calls:
             name, args = call.function.name, dict(call.function.arguments or {})
             yield {"type": "tool_call", "name": name, "arguments": args}
-            outcome = await _run_tool(name, args, len(passages) + 1, allowed)
+            outcome = await _run_tool(name, args, len(passages) + 1, allowed, access)
             passages.update({p["number"]: p for p in outcome.passages})
             messages.append({"role": "tool", "tool_name": name, "content": outcome.text})
             ok = not outcome.text.startswith("Error")

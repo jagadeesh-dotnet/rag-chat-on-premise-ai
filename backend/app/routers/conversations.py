@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import conversations as store
+from app.auth.deps import CurrentAccess
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -30,31 +31,36 @@ def _not_found() -> HTTPException:
 
 
 @router.get("")
-def list_conversations() -> list[dict]:
-    return store.list_conversations()
+def list_conversations(access: CurrentAccess) -> list[dict]:
+    return store.list_conversations(access.user_id)
 
 
 @router.get("/{conversation_id}")
-def get_conversation(conversation_id: UUID) -> dict:  # UUID: anything else is rejected with 422
-    conversation = store.get_conversation(str(conversation_id))
+def get_conversation(access: CurrentAccess, conversation_id: UUID) -> dict:
+    conversation = store.get_conversation(access.user_id, str(conversation_id))
     if conversation is None:
         raise _not_found()
     return conversation
 
 
 @router.put("/{conversation_id}")
-def save_conversation(conversation_id: UUID, request: SaveRequest) -> dict:
-    return store.save_conversation(str(conversation_id), [m.model_dump() for m in request.messages])
+def save_conversation(access: CurrentAccess, conversation_id: UUID, request: SaveRequest) -> dict:
+    saved = store.save_conversation(
+        access.user_id, str(conversation_id), [m.model_dump() for m in request.messages]
+    )
+    if saved is None:
+        raise _not_found()  # the id belongs to another user
+    return saved
 
 
 @router.patch("/{conversation_id}")
-def rename_conversation(conversation_id: UUID, request: RenameRequest) -> dict:
-    if not store.rename_conversation(str(conversation_id), request.title.strip()):
+def rename_conversation(access: CurrentAccess, conversation_id: UUID, request: RenameRequest) -> dict:
+    if not store.rename_conversation(access.user_id, str(conversation_id), request.title.strip()):
         raise _not_found()
     return {"id": str(conversation_id), "title": request.title.strip()}
 
 
 @router.delete("/{conversation_id}", status_code=204)
-def delete_conversation(conversation_id: UUID) -> None:
-    if not store.delete_conversation(str(conversation_id)):
+def delete_conversation(access: CurrentAccess, conversation_id: UUID) -> None:
+    if not store.delete_conversation(access.user_id, str(conversation_id)):
         raise _not_found()

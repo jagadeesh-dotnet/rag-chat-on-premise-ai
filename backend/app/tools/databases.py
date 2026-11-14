@@ -2,8 +2,14 @@
 
 import pyodbc
 
-from app.databases.query import DatabaseError, GuardError, get_database, run_select
-from app.databases.registry import load_databases
+from app.auth.access import Access
+from app.databases.query import (
+    DatabaseError,
+    GuardError,
+    get_database,
+    run_select,
+    visible_databases,
+)
 from app.databases.schema import render, schema_cache
 from app.tools.tables import to_markdown
 
@@ -42,19 +48,24 @@ SQL_TOOL = {
 }
 
 
-def database_list() -> str:
-    """Names, descriptions and notes for the prompt (full schemas come from get_schema)."""
+def database_list(access: Access) -> str:
+    """Names, descriptions and notes of the databases this user may use (full schemas come from get_schema)."""
     lines = []
-    for db in load_databases().values():
+    for db in visible_databases(access).values():
         lines.append(f"- {db.name}: {db.description}")
         lines += [f"    note: {n}" for n in db.notes]
     return "\n".join(lines)
 
 
-def run_get_schema(database: str) -> tuple[str, int]:
+NO_ACCESS = "Error: you have no access to any databases. Tell the user you can't access that data."
+
+
+def run_get_schema(database: str, access: Access) -> tuple[str, int]:
     """Blocking. Returns (schema text for the model, number of tables)."""
+    if not visible_databases(access):
+        return NO_ACCESS, 0
     try:
-        db = get_database(database)
+        db = get_database(database, access)
         tables = schema_cache.tables(db)
     except DatabaseError as exc:
         return f"Error: {exc}", 0
@@ -63,10 +74,12 @@ def run_get_schema(database: str) -> tuple[str, int]:
     return render(db, tables), len(tables)
 
 
-def run_sql(database: str, sql: str) -> tuple[str, dict | None]:
+def run_sql(database: str, sql: str, access: Access) -> tuple[str, dict | None]:
     """Blocking. Returns (text for the model, table event or None)."""
+    if not visible_databases(access):
+        return NO_ACCESS, None
     try:
-        db = get_database(database)
+        db = get_database(database, access)
         result = run_select(db, sql)
     except (GuardError, DatabaseError) as exc:
         return f"Error: {exc}", None

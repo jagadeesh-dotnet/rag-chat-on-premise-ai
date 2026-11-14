@@ -5,8 +5,8 @@ import decimal
 import re
 
 import pyodbc
-from sqlglot import exp
 
+from app.auth.access import Access
 from app.config import settings
 from app.databases.connection import connect_read_only
 from app.databases.registry import DatabaseConfig, load_databases
@@ -20,8 +20,14 @@ class DatabaseError(ValueError):
     """The query failed. The message is meant for the model, so it can correct its SQL."""
 
 
-def get_database(name: str) -> DatabaseConfig:
-    databases = load_databases()
+def visible_databases(access: Access | None) -> dict[str, DatabaseConfig]:
+    """The databases a user may use (access=None: all, for internal use and tests)."""
+    return {n: db for n, db in load_databases().items() if access is None or access.can_use_database(n)}
+
+
+def get_database(name: str, access: Access | None = None) -> DatabaseConfig:
+    """A database the user may use. One they may not use reads as unknown: it doesn't reveal it exists."""
+    databases = visible_databases(access)
     db = databases.get((name or "").strip().lower())
     if db is None:
         raise DatabaseError(f"Unknown database {name!r}. Available: {', '.join(databases) or '(none)'}")
@@ -52,7 +58,7 @@ def _error_message(exc: pyodbc.Error) -> str:
 def run_select(db: DatabaseConfig, sql: str) -> dict:
     tables = schema_cache.tables(db)
     known = {t.name.lower() for t in tables}
-    tree = check_select(sql, "tsql", known, SCHEMAS)
+    check_select(sql, "tsql", known, SCHEMAS)
 
     try:
         with connect_read_only(db) as conn:
@@ -62,11 +68,13 @@ def run_select(db: DatabaseConfig, sql: str) -> dict:
     except pyodbc.Error as exc:
         message = _error_message(exc)
         if "timeout" in message.lower() or getattr(exc, "args", [""])[0] == "HYT00":
-            raise DatabaseError(f"The query took longer than {settings.query_timeout_s:g} s and was stopped.") from exc
+            raise DatabaseError(
+                f"The query took longer than {settings.query_timeout_s:g} s and was stopped."
+            ) from exc
         if "Invalid column name" in message or "Invalid object name" in message:
-            # Self-healing: show the real columns of the tables the query used.
-            used = {t.name.lower() for t in tree.find_all(exp.Table)} & known
-            message += "\n\nSchema of the tables used:\n" + render(db, tables, only=used or None)
+            # Self-healing: show the whole schema, not only the tables used - the fix is often a table the
+            # query didn't use yet (e.g. pub_id is in titles, not titleauthor). Measured: fewer retries.
+            message += "\n\nCall get_schema first next time. The database schema:\n" + render(db, tables)
         raise DatabaseError(message) from exc
 
     truncated = len(rows) > settings.max_result_rows
@@ -74,4 +82,4 @@ def run_select(db: DatabaseConfig, sql: str) -> dict:
     return {"columns": columns, "rows": rows, "truncated": truncated}
 
 
-__all__ = ["DatabaseError", "GuardError", "get_database", "run_select"]
+__all__ = ["DatabaseError", "GuardError", "get_database", "run_select", "visible_databases"]
