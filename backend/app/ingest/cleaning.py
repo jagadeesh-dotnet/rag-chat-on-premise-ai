@@ -13,7 +13,8 @@ def clean_text(text: str) -> str:
     """Normalise characters and whitespace without changing the meaning."""
     text = unicodedata.normalize("NFKC", text)  # "ﬁ" -> "fi", no-break space -> space
     text = "".join(
-        ch for ch in text
+        ch
+        for ch in text
         if ch in _KEEP or unicodedata.category(ch) not in ("Cc", "Cf")  # control / invisible chars
     )
     text = _HYPHEN_BREAK.sub(r"\1\2", text)  # "infor-\nmation" -> "information"
@@ -51,9 +52,6 @@ def remove_repeated_lines(pages: list[str], edge: int = 3, min_share: float = 0.
         lines = page.split("\n")
         non_empty = [i for i, ln in enumerate(lines) if ln.strip()]
         edge_rows = set(non_empty[:edge] + non_empty[-edge:])
-        kept = [
-            ln for i, ln in enumerate(lines)
-            if not (i in edge_rows and _signature(ln) in repeated)
-        ]
+        kept = [ln for i, ln in enumerate(lines) if not (i in edge_rows and _signature(ln) in repeated)]
         cleaned.append("\n".join(kept))
     return cleaned

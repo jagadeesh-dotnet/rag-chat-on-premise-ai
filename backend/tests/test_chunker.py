@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 import pytest
 
 from app.ingest.chunker import chunk_sections, split_text
@@ -25,7 +27,7 @@ def test_chunks_never_exceed_size():
 
 def test_neighbouring_chunks_overlap():
     chunks = split_text(TEXT, size=300, overlap=50)
-    for first, second in zip(chunks, chunks[1:]):
+    for first, second in pairwise(chunks):
         tail = first[-20:]
         assert tail in second, f"no overlap between {first[-40:]!r} and {second[:40]!r}"
 
