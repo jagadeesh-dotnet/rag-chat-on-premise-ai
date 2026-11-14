@@ -1,11 +1,22 @@
-from app.routers import chat
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.ingest.store import get_store
+from app.routers import chat, documents
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield  # the app runs here
+    get_store().close()  # on shutdown: release data/qdrant cleanly
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,6 +26,8 @@ app.add_middleware(
 )
 
 app.include_router(chat.router)
+app.include_router(documents.router)
+
 
 @app.get("/api/health")
 async def health() -> dict:

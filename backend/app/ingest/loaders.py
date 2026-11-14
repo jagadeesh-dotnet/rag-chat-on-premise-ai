@@ -13,6 +13,7 @@ from app.ingest.models import Section
 log = logging.getLogger(__name__)
 
 SPREADSHEETS = {".xlsx", ".xls", ".csv"}  # handled as SQL tables in step 7, not chunked
+DOCUMENT_TYPES = {".pdf", ".docx", ".doc"}  # what the indexer embeds
 
 
 def load_pdf(path: Path) -> list[Section]:
