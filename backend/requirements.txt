@@ -1,9 +1,2 @@
-fastapi[standard]
-qdrant-client
-python-dotenv
-pydantic
-pydantic-settings
-pytest
-httpx
-ruff
-ipykernel
+fastapi[standard]==0.162.7
+pydantic-settings==2.16.3

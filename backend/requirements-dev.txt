@@ -1,0 +1,14 @@
+-r requirements.txt
+pytest==9.2.0
+ruff==0.17.5
+ipykernel==7.4.0
+
+# fastapi[standard]
+# qdrant-client
+# python-dotenv
+# pydantic
+# pydantic-settings
+# pytest
+# httpx
+# ruff
+# ipykernel
