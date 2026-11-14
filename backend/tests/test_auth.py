@@ -1,8 +1,9 @@
 import hashlib
-import sqlite3
 
+import pyodbc
 import pytest
 
+from app.auth.db import connect, connect_as_administrator
 from app.auth.passwords import PasswordPolicyError, check_policy
 from app.config import settings
 from app.routers import admin, conversations
@@ -24,11 +25,20 @@ def test_login_sets_a_safe_cookie_and_stores_only_hashes(isolated):
     assert "HttpOnly" in cookie and "SameSite=strict" in cookie and "Path=/" in cookie
 
     token = client.cookies.get(settings.session_cookie)
-    db = sqlite3.connect(settings.app_db_path)
-    assert db.execute("SELECT password_hash FROM users").fetchone()[0].startswith("$2b$")  # bcrypt
-    stored = [r[0] for r in db.execute("SELECT token_hash FROM sessions")]
+    with connect_as_administrator() as db:
+        assert db.scalar("SELECT password_hash FROM users").startswith("$2b$")  # bcrypt
+        stored = [r["token_hash"] for r in db.all("SELECT token_hash FROM sessions")]
+        audit = str(db.all("SELECT * FROM audit"))
     assert stored == [hashlib.sha256(token.encode()).hexdigest()]  # the token itself is never stored
-    assert PASSWORD not in str(db.execute("SELECT * FROM audit").fetchall())
+    assert PASSWORD not in audit
+
+
+def test_the_app_cannot_change_or_delete_audit_entries(isolated):
+    with connect() as db:  # as chat_app, like the running app
+        db.execute("INSERT INTO audit (at, username, action) VALUES (SYSUTCDATETIME(), 'x', 'test')")
+    for sql in ("UPDATE audit SET detail = 'edited'", "DELETE FROM audit", "DROP TABLE audit"):
+        with pytest.raises(pyodbc.Error, match="(?i)denied|permission"), connect() as db:
+            db.execute(sql)
 
 
 def test_wrong_password_and_unknown_user_look_the_same(isolated):

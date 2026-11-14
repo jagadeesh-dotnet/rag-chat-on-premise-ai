@@ -3,7 +3,7 @@
 import json
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 import pyodbc
 
@@ -38,8 +38,12 @@ SELECT SCHEMA_NAME(t.schema_id), t.name, SUM(p.rows)
 FROM sys.tables t JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
 GROUP BY t.schema_id, t.name"""
 
-# Changes whenever a table or column is created, altered or dropped.
-_FINGERPRINT = "SELECT COUNT(*), CONVERT(varchar(30), MAX(modify_date), 126) FROM sys.objects WHERE is_ms_shipped = 0"
+# Changes whenever a table or column is created, altered or dropped. The 'v2' prefix is bumped when the cached
+# format changes (v2: structured foreign keys for row-level permissions), so old cache files are re-read.
+_FINGERPRINT = (
+    "SELECT 'v2|' + CAST(COUNT(*) AS varchar(10)) + '|' + CONVERT(varchar(30), MAX(modify_date), 126) "
+    "FROM sys.objects WHERE is_ms_shipped = 0"
+)
 
 
 @dataclass
@@ -48,6 +52,11 @@ class Table:
     name: str
     rows: int
     columns: list[str]  # already rendered: "OrderID int PK", "CustomerID nchar(5) -> Customers.CustomerID"
+    foreign_keys: list[list[str]] = field(default_factory=list)  # [column, referenced table, referenced column]
+
+    @property
+    def column_names(self) -> list[str]:
+        return [c.split(" ", 1)[0] for c in self.columns]
 
 
 def _type(data_type: str, length, precision, scale) -> str:
@@ -60,7 +69,7 @@ def _type(data_type: str, length, precision, scale) -> str:
 
 def read_schema(conn: pyodbc.Connection) -> list[Table]:
     primary = {tuple(r) for r in conn.execute(_PRIMARY_KEYS).fetchall()}
-    foreign = {(r[0], r[1], r[2]): f"{r[3]}.{r[4]}" for r in conn.execute(_FOREIGN_KEYS).fetchall()}
+    foreign = {(r[0], r[1], r[2]): (r[3], r[4]) for r in conn.execute(_FOREIGN_KEYS).fetchall()}
     counts = {(r[0], r[1]): int(r[2] or 0) for r in conn.execute(_ROW_COUNTS).fetchall()}
 
     tables: dict[tuple[str, str], Table] = {}
@@ -72,7 +81,9 @@ def read_schema(conn: pyodbc.Connection) -> list[Table]:
         if (schema, table, column) in primary:
             text += " PK"
         if (schema, table, column) in foreign:
-            text += f" -> {foreign[(schema, table, column)]}"
+            ref_table, ref_column = foreign[(schema, table, column)]
+            text += f" -> {ref_table}.{ref_column}"
+            tables[key].foreign_keys.append([column, ref_table, ref_column])
         if nullable == "YES":
             text += " null"
         tables[key].columns.append(text)
@@ -84,14 +95,15 @@ def quoted(table: Table) -> str:
     return f"{table.schema}.{name}"
 
 
-def render(db: DatabaseConfig, tables: list[Table], only: set[str] | None = None) -> str:
-    """Compact schema text. `only`: lowercase table names to include (for focused error hints)."""
+def render(db: DatabaseConfig, tables: list[Table], redact: set[str] | frozenset[str] = frozenset()) -> str:
+    """Compact schema text. `redact`: lowercase names of tables filtered by row rules for this user - their
+    row counts are hidden, because the total would reveal how much data the user can't see."""
     lines = [f"Database {db.name} (SQL Server, T-SQL). {db.description}"]
     for note in db.notes:
         lines.append(f"Note: {note}")
     for t in tables:
-        if only is None or t.name.lower() in only:
-            lines.append(f"{quoted(t)} ({t.rows} rows): {', '.join(t.columns)}")
+        count = "rows: only yours" if t.name.lower() in redact else f"{t.rows} rows"
+        lines.append(f"{quoted(t)} ({count}): {', '.join(t.columns)}")
     return "\n".join(lines)
 
 
@@ -108,8 +120,7 @@ class SchemaCache:
             if cached and not force and time.monotonic() - cached[0] < settings.schema_recheck_s:
                 return cached[2]
             with connect_read_only(db) as conn:
-                count, modified = conn.execute(_FINGERPRINT).fetchone()
-                fingerprint = f"{count}|{modified}"
+                fingerprint = conn.execute(_FINGERPRINT).fetchone()[0]
                 if cached and not force and cached[1] == fingerprint:
                     tables = cached[2]  # unchanged: no need to read the whole schema again
                 else:

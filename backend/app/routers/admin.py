@@ -1,5 +1,8 @@
 """User, role and audit administration. Every endpoint requires the admin role."""
 
+from typing import Literal
+
+import pyodbc
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -9,6 +12,7 @@ from app.auth.deps import AdminAccess
 from app.auth.passwords import PasswordPolicyError
 from app.config import settings
 from app.databases.registry import load_databases
+from app.databases.schema import schema_cache
 from app.ingest.indexer import find_documents
 from app.tables.catalog import get_catalog
 
@@ -26,6 +30,15 @@ class UserChange(BaseModel):
     display_name: str | None = Field(None, max_length=100)
     is_active: bool | None = None
     roles: list[str] | None = None
+    attributes: dict[str, list[str]] | None = None  # e.g. {"region": ["East"]}, compared by row rules
+
+
+class NewRule(BaseModel):
+    kind: Literal["spreadsheet", "database"]
+    source: str = Field("", max_length=100)  # database name; ignored for spreadsheets
+    table: str = Field(min_length=1, max_length=128)
+    column: str = Field(min_length=1, max_length=128)
+    attribute: str = Field(min_length=1, max_length=50, pattern=r"^[A-Za-z0-9_\-]+$")
 
 
 class PasswordReset(BaseModel):
@@ -68,7 +81,9 @@ def create_user(access: AdminAccess, user: NewUser) -> dict:
 @router.patch("/users/{user_id}")
 def update_user(access: AdminAccess, user_id: int, change: UserChange) -> dict:
     try:
-        service.update_user(_actor(access), user_id, change.display_name, change.is_active, change.roles)
+        service.update_user(
+            _actor(access), user_id, change.display_name, change.is_active, change.roles, change.attributes
+        )
     except service.AccountError as exc:
         raise _fail(exc) from exc
     return {"id": user_id}
@@ -106,18 +121,51 @@ def delete_role(access: AdminAccess, name: str) -> None:
 
 @router.get("/resources")
 def resources(_: AdminAccess) -> dict:
-    """What can be granted: document folders, spreadsheet tables, databases."""
+    """What can be granted (folders, spreadsheet tables, databases) and the columns row rules can use."""
     docs = settings.docs_dir
     folders = {"/"} | {
         p.relative_to(docs).parent.as_posix() for p in find_documents(docs) if p.parent != docs
     }
     catalog = get_catalog()
     catalog.refresh()
+    databases = load_databases()
+    database_columns: dict[str, dict[str, list[str]]] = {}
+    for name, db in databases.items():
+        try:
+            database_columns[name] = {t.name: t.column_names for t in schema_cache.tables(db)}
+        except pyodbc.Error:
+            database_columns[name] = {}  # unreachable right now: no column suggestions
     return {
         "folder": sorted(folders),
         "spreadsheet": sorted(catalog.tables),
-        "database": sorted(load_databases()),
+        "database": sorted(databases),
+        "columns": {
+            "spreadsheet": {name: [c for c, _ in info.columns] for name, info in catalog.tables.items()},
+            "database": database_columns,
+        },
     }
+
+
+@router.get("/rules")
+def rules(_: AdminAccess) -> list[dict]:
+    return service.list_rules()
+
+
+@router.post("/rules", status_code=201)
+def add_rule(access: AdminAccess, rule: NewRule) -> dict:
+    try:
+        rule_id = service.add_rule(_actor(access), rule.kind, rule.source, rule.table, rule.column, rule.attribute)
+    except service.AccountError as exc:
+        raise _fail(exc) from exc
+    return {"id": rule_id}
+
+
+@router.delete("/rules/{rule_id}", status_code=204)
+def delete_rule(access: AdminAccess, rule_id: int) -> None:
+    try:
+        service.delete_rule(_actor(access), rule_id)
+    except service.AccountError as exc:
+        raise _fail(exc) from exc
 
 
 @router.get("/audit")

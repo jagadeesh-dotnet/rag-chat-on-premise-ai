@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
     qdrant_collection: str = "documents"
     chat_db_path: Path = PROJECT_ROOT / "data" / "chat.db"  # saved conversations
-    app_db_path: Path = PROJECT_ROOT / "data" / "app.db"  # users, roles, sessions, audit log
+    app_database: str = "RagChatApp"  # SQL Server: users, roles, permissions, row rules, sessions, audit
+    app_db_user: str = "chat_app"  # the app runs as this database user: read and write rows, nothing else
+    legacy_app_db_path: Path = PROJECT_ROOT / "data" / "app.db"  # old SQLite accounts (migrate-sqlite copies them)
     session_hours: int = 12
     session_cookie: str = "lc_session"
     cookie_secure: bool = False  # True when served over HTTPS (the cookie is then never sent over plain HTTP)

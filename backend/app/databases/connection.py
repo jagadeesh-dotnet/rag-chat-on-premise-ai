@@ -16,11 +16,15 @@ pyodbc.pooling = False
 _IDENTIFIER = re.compile(r"^\w+$")
 
 
-def _connection_string(database: str) -> str:
+def connection_string(database: str) -> str:
+    """Windows authentication to a database on the configured SQL Server (also used for RagChatApp)."""
     return (
         f"Driver={{{settings.odbc_driver}}};Server={settings.sql_server};Database={database};"
         "Trusted_Connection=yes;TrustServerCertificate=yes;"  # Driver 18 encrypts; local cert is self-signed
     )
+
+
+_connection_string = connection_string
 
 
 @contextmanager
