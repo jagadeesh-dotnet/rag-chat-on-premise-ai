@@ -1,4 +1,4 @@
-<nav class="sidebar" (click)="menuFor = null">
+<nav class="sidebar" (click)="menuFor = null; userMenuOpen = false">
   <button type="button" class="new-chat" (click)="newChat.emit()">＋ New chat</button>
 
   <div class="list">
@@ -32,4 +32,16 @@
     </ng-container>
     <p class="empty" *ngIf="!(groups$ | async)?.length">No saved chats yet.</p>
   </div>
+
+  <footer class="user" *ngIf="me$ | async as me">
+    <button type="button" class="user-button" (click)="toggleUserMenu($event)">
+      <span class="avatar">{{ me.display_name.charAt(0).toUpperCase() }}</span>
+      <span class="name">{{ me.display_name }}</span>
+    </button>
+    <div class="menu-popup user-menu" *ngIf="userMenuOpen">
+      <a *ngIf="me.is_admin" routerLink="/admin">Admin</a>
+      <a routerLink="/change-password">Change password</a>
+      <button type="button" (click)="signOut()">Sign out</button>
+    </div>
+  </footer>
 </nav>

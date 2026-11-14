@@ -1,12 +1,20 @@
-import { Injectable } from '@angular/core';
+import { Injectable, NgZone } from '@angular/core';
+import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
+import { AuthService } from '../auth/auth.service';
 import { ChatEvent, ChatMessage } from './chat.models';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private readonly url = `${environment.apiUrl}/api/chat`;
+
+  constructor(
+    private auth: AuthService,
+    private router: Router,
+    private zone: NgZone,
+  ) {}
 
   /** Streams the answer as events. Unsubscribing cancels the request. */
   streamChat(messages: ChatMessage[]): Observable<ChatEvent> {
@@ -19,8 +27,20 @@ export class ChatService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messages }),
           signal: controller.signal,
+          credentials: 'include', // send the session cookie (fetch doesn't go through the HTTP interceptor)
         });
 
+        if (response.status === 401) {
+          this.zone.run(() => {
+            this.auth.signedOut();
+            this.router.navigate(['/login'], { queryParams: { returnUrl: this.router.url } });
+          });
+          throw new Error('Your session has ended. Please sign in again.');
+        }
+        if (response.status === 403) {
+          this.zone.run(() => this.router.navigate(['/change-password']));
+          throw new Error('Please change your temporary password first.');
+        }
         if (!response.ok || !response.body) {
           throw new Error(`Server returned ${response.status}: ${await response.text()}`);
         }

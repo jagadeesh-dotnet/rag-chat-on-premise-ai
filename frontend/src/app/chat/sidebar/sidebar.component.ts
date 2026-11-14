@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { Router } from '@angular/router';
 import { map } from 'rxjs';
 
+import { AuthService } from '../../auth/auth.service';
 import { ConversationSummary } from '../chat.models';
 import { ConversationService } from '../conversation.service';
 
@@ -24,13 +25,28 @@ export class SidebarComponent implements OnInit {
   menuFor: string | null = null;
   editingId: string | null = null;
   editTitle = '';
+  userMenuOpen = false;
 
   readonly groups$ = this.conversations.list$.pipe(map(groupByAge));
+  readonly me$ = this.auth.me$;
 
   constructor(
     private conversations: ConversationService,
+    private auth: AuthService,
     private router: Router,
   ) {}
+
+  toggleUserMenu(event: Event): void {
+    event.stopPropagation();
+    this.userMenuOpen = !this.userMenuOpen;
+  }
+
+  signOut(): void {
+    this.auth.logout().subscribe(() => {
+      this.conversations.list$.next([]); // don't leave this user's chat titles on screen
+      this.router.navigateByUrl('/login');
+    });
+  }
 
   ngOnInit(): void {
     this.conversations.refresh();

@@ -1,0 +1,20 @@
+<main class="auth-page">
+  <form class="auth-card" (ngSubmit)="submit()" #form="ngForm">
+    <h1>Sign in</h1>
+    <p class="sub">RAG Chat · on-premise</p>
+
+    <label>
+      Username
+      <input name="username" [(ngModel)]="username" autocomplete="username" required autofocus />
+    </label>
+    <label>
+      Password
+      <input name="password" type="password" [(ngModel)]="password" autocomplete="current-password" required />
+    </label>
+
+    <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+    <button type="submit" class="primary" [disabled]="busy || !form.valid">
+      {{ busy ? 'Signing in…' : 'Sign in' }}
+    </button>
+  </form>
+</main>

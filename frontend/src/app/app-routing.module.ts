@@ -1,12 +1,23 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 
+import { sessionGuard, signedInGuard } from './auth/auth.guards';
+import { ChangePasswordComponent } from './auth/change-password/change-password.component';
+import { LoginComponent } from './auth/login/login.component';
+
 const routes: Routes = [
-  { path: '', loadChildren: () => import('./chat/chat.module').then((m) => m.ChatModule) },
-  { path: '**', redirectTo: '' },];
+  { path: 'login', component: LoginComponent, title: 'Sign in · RAG Chat' },
+  { path: 'change-password', component: ChangePasswordComponent, canActivate: [sessionGuard] },
+  {
+    path: '',
+    canActivate: [signedInGuard],
+    loadChildren: () => import('./chat/chat.module').then((m) => m.ChatModule),
+  },
+  { path: '**', redirectTo: '' },
+];
 
 @NgModule({
   imports: [RouterModule.forRoot(routes)],
-  exports: [RouterModule]
+  exports: [RouterModule],
 })
-export class AppRoutingModule { }
+export class AppRoutingModule {}
