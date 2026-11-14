@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     embed_batch: int = 32
     qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
     qdrant_collection: str = "documents"
+    chat_db_path: Path = PROJECT_ROOT / "data" / "chat.db"  # saved conversations
     ocr_enabled: bool = True  # read scanned PDF pages and images with RapidOCR
     ocr_min_chars: int = 50  # a page with less text than this (and an image on it) is OCR'd
     ocr_dpi: int = 200  # render resolution for OCR: higher = sharper but slower
