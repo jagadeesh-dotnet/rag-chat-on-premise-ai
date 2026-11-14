@@ -33,54 +33,73 @@ vector database and the data. No cloud API is used and no data leaves the comput
 ## Overall architecture
 
 ```mermaid
-flowchart LR
-    user(["User<br/>(browser)"])
+flowchart TB
+    U(["👤 User<br/>in the browser"]):::user
 
-    subgraph FE["Frontend - Angular 16 (port 4200)"]
-        ui["Chat page, sidebar,<br/>result cards and charts,<br/>admin pages"]
+    subgraph FE["🖥️ Frontend · Angular 16 · port 4200"]
+        UI["💬 Chat page<br/>tables · charts · admin pages"]:::fe
     end
 
-    subgraph BE["Backend - FastAPI (port 8000)"]
-        auth["REST API<br/>login, sessions,<br/>roles and permissions"]
-        agent["Agent<br/>(tool calling loop)"]
-        tools["Tools:<br/>search_documents<br/>query_tables<br/>get_schema / run_sql"]
-        guard["SQL guard (sqlglot)<br/>+ row-level rewrite"]
-        ingest["Indexer<br/>load, OCR, chunk, embed"]
+    subgraph BE["⚙️ Backend · FastAPI · port 8000"]
+        API["🔐 Login and permissions<br/>checked on every request"]:::be
+        AG["🤖 Agent<br/>decides which tool to use"]:::be
+        GD["🛡️ SQL guard<br/>read-only · row rules"]:::guard
     end
 
-    subgraph AI["Ollama (port 11434)"]
-        llm["qwen3:14b<br/>chat + tool calls"]
-        emb["nomic-embed-text<br/>embeddings"]
+    subgraph AI["🧠 Ollama · local AI · port 11434"]
+        LLM["qwen3:14b<br/>chat model"]:::ai
+        EMB["nomic-embed-text<br/>embedding model"]:::ai
     end
 
-    subgraph DATA["Local data"]
-        docs[("data/docs<br/>PDF, Word, images")]
-        qdrant[("Qdrant (local mode)<br/>dense + BM25 vectors")]
-        duck[("DuckDB in memory<br/>Excel / CSV as tables")]
-        chats[("SQLite<br/>saved chats")]
+    subgraph SRC["📚 Your data"]
+        DOC[("📄 Documents<br/>PDF · Word · images<br/>searched with Qdrant")]:::data
+        XLS[("📊 Spreadsheets<br/>Excel · CSV<br/>queried with DuckDB")]:::data
+        DB[("🗄️ Databases<br/>Northwind · pubs<br/>SQL Server")]:::data
     end
 
-    subgraph SQL["SQL Server (port 1433)"]
-        biz[("Northwind, pubs<br/>as chat_reader - read only")]
-        app[("RagChatApp<br/>users, roles, rules, audit<br/>as chat_app")]
+    subgraph APP["🔑 App data"]
+        ACC[("👥 Users · roles · audit<br/>RagChatApp")]:::app
+        CH[("🕘 Saved chats<br/>SQLite")]:::app
     end
 
-    user --> ui
-    ui -- "REST + NDJSON stream<br/>(session cookie)" --> auth
-    auth --> agent
-    agent <--> llm
-    agent --> tools
-    tools --> guard
-    guard --> duck
-    guard --> biz
-    tools -- "search" --> qdrant
-    tools -- "embed question" --> emb
-    ingest --> docs
-    ingest --> emb
-    ingest --> qdrant
-    auth --> app
-    auth -- "save / load chats" --> chats
+    U --> UI
+    UI -- "question" --> API
+    API --> AG
+    AG <-- "prompt and tool calls" --> LLM
+    AG -- "search" --> DOC
+    DOC -. "embeddings" .- EMB
+    AG -- "SQL" --> GD
+    GD --> XLS
+    GD --> DB
+    API --> ACC
+    API --> CH
+
+    classDef user  fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#111
+    classDef fe    fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px,color:#111
+    classDef be    fill:#c7d2fe,stroke:#4338ca,stroke-width:2px,color:#111
+    classDef guard fill:#fecaca,stroke:#b91c1c,stroke-width:2px,color:#111
+    classDef ai    fill:#e9d5ff,stroke:#7e22ce,stroke-width:2px,color:#111
+    classDef data  fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111
+    classDef app   fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#111
+
+    style FE  fill:#3b82f61a,stroke:#3b82f6,stroke-width:2px
+    style BE  fill:#6366f11a,stroke:#6366f1,stroke-width:2px
+    style AI  fill:#a855f71a,stroke:#a855f7,stroke-width:2px
+    style SRC fill:#22c55e1a,stroke:#22c55e,stroke-width:2px
+    style APP fill:#f973161a,stroke:#f97316,stroke-width:2px
 ```
+
+**In simple words**
+
+1. The user types a question in the **Angular** chat page.
+2. The **backend** checks who the user is and what they are allowed to see.
+3. The **agent** sends the question to the local **qwen3** model, which decides what it needs:
+   a document search, a spreadsheet query or a database query.
+4. Document questions are searched in **Qdrant** (the embedding model turns text into vectors).
+   Number questions become SQL, which passes the **SQL guard** (read-only, row rules) before it runs.
+5. The results go back to the model, it writes the answer with citations, and the answer streams to the
+   browser with tables and charts.
+6. Users, roles and the audit log are kept in **RagChatApp** (SQL Server); saved chats in **SQLite**.
 
 **How one question is answered**
 
