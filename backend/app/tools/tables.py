@@ -49,9 +49,10 @@ def run_query(sql: str) -> tuple[str, dict | None]:
         # Send the schema back with the error, so the model can fix the SQL in its next round.
         return f"Error: {exc}\n\nAvailable tables:\n{catalog.schema_text()}", None
 
+    source = "Source: the spreadsheets (" + ", ".join(sorted(catalog.tables)) + "). Name this source in your answer."
     if not result["rows"]:
-        return "The query returned no rows.", None
-    text = to_markdown(result["columns"], result["rows"])
+        return f"{source}\nThe query returned no rows.", None
+    text = source + "\n" + to_markdown(result["columns"], result["rows"])
     if result["truncated"]:
         text += f"\n(Only the first {len(result['rows'])} rows are shown.)"
     event = {"type": "table", "sql": sql, **result}
