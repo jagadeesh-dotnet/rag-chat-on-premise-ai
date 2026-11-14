@@ -334,12 +334,5 @@ frontend/src/app/
   admin/              users, roles, row rules, audit log
 db-scripts/           SQL Server setup scripts
 data/docs/            sample documents and spreadsheet
-docs/NOTES.md         what I learned in each step of building this
 ```
 
----
-```
-## Learning notes
-
-This project was built step by step as a learning exercise. The reasons behind each decision and the
-problems I faced are written in [docs/NOTES.md](docs/NOTES.md).```
