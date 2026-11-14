@@ -52,6 +52,46 @@ def test_anything_else_is_rejected(sql):
         check_select(sql, "duckdb", TABLES)
 
 
+NORTHWIND = {"orders", "customers", "order details"}
+DBO = frozenset({"dbo"})
+
+TSQL_ALLOWED = [
+    "SELECT TOP 5 c.CompanyName FROM dbo.Customers c ORDER BY c.CompanyName",
+    (
+        "SELECT o.OrderID, SUM(od.UnitPrice * od.Quantity) FROM Orders o JOIN [Order Details] od "
+        "ON od.OrderID = o.OrderID GROUP BY o.OrderID"
+    ),
+    (
+        "WITH t AS (SELECT TOP 3 CustomerID FROM dbo.Orders GROUP BY CustomerID ORDER BY COUNT(*) DESC) "
+        "SELECT c.CompanyName FROM t JOIN dbo.Customers c ON c.CustomerID = t.CustomerID"
+    ),
+]
+
+TSQL_BLOCKED = [
+    "SELECT * FROM Northwind.dbo.Orders",  # three-part name: another database
+    "SELECT * FROM master.sys.databases",
+    "SELECT * FROM sys.tables",  # system schema
+    "SELECT * FROM INFORMATION_SCHEMA.COLUMNS",
+    "EXEC xp_cmdshell 'dir'",
+    "SELECT * FROM OPENROWSET('SQLNCLI', 'Server=x;', 'SELECT 1')",
+    "SELECT * INTO #copy FROM dbo.Orders",
+    "UPDATE dbo.Orders SET Freight = 0",
+    "WAITFOR DELAY '00:01:00'",
+    "SELECT * FROM dbo.Orders; DROP TABLE dbo.Orders",
+]
+
+
+@pytest.mark.parametrize("sql", TSQL_ALLOWED)
+def test_tsql_selects_with_dbo_and_brackets_are_allowed(sql):
+    check_select(sql, "tsql", NORTHWIND, DBO)
+
+
+@pytest.mark.parametrize("sql", TSQL_BLOCKED)
+def test_tsql_attacks_are_rejected(sql):
+    with pytest.raises(GuardError):
+        check_select(sql, "tsql", NORTHWIND, DBO)
+
+
 def test_unknown_table_error_lists_the_real_tables():
     with pytest.raises(GuardError, match="Available tables: sales"):
         check_select("SELECT * FROM orders", "duckdb", TABLES)

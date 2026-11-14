@@ -32,8 +32,14 @@ _FORBIDDEN_FUNCTIONS = {
 _FORBIDDEN_PREFIXES = ("read_", "parquet_", "iceberg_", "delta_", "sqlite_", "postgres_", "mysql_")
 
 
-def check_select(sql: str, dialect: str, allowed_tables: set[str]) -> exp.Expression:
-    """Return the parsed query if it is safe, otherwise raise GuardError with the reason."""
+def check_select(
+    sql: str, dialect: str, allowed_tables: set[str], allowed_schemas: frozenset[str] = frozenset()
+) -> exp.Expression:
+    """Return the parsed query if it is safe, otherwise raise GuardError with the reason.
+
+    allowed_schemas: schema prefixes that may be written before a table (SQL Server: {"dbo"}).
+    Three-part names (database.schema.table) are always rejected: no reaching into other databases.
+    """
     try:
         statements = [s for s in sqlglot.parse(sql, read=dialect) if s is not None]
     except sqlglot.errors.ParseError as exc:
@@ -57,8 +63,12 @@ def check_select(sql: str, dialect: str, allowed_tables: set[str]) -> exp.Expres
     for table in tree.find_all(exp.Table):
         if not isinstance(table.this, exp.Identifier):  # FROM read_csv(...), FROM range(...)
             raise GuardError("Table functions are not allowed: select from the listed tables only.")
-        if table.args.get("db") or table.args.get("catalog"):
-            raise GuardError(f"Use the table name only, without a database or schema: {table.sql(dialect)}")
+        if table.args.get("catalog"):
+            raise GuardError(f"Other databases can't be used: {table.sql(dialect)}")
+        schema = table.text("db").lower()
+        if schema and schema not in allowed_schemas:
+            hint = f" Allowed: {', '.join(sorted(allowed_schemas))}." if allowed_schemas else ""
+            raise GuardError(f"Schema {table.text('db')!r} can't be used: {table.sql(dialect)}.{hint}")
         name = table.name.lower()
         if name not in allowed and name not in cte_names:
             known = ", ".join(sorted(allowed_tables)) or "(none)"
