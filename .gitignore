@@ -9,3 +9,7 @@ data/qdrant/
 data/cache/
 data/*.db
 *.local.json
+
+# Evaluation reports are per machine and per run
+backend/tests/eval/reports/*
+!backend/tests/eval/reports/.gitkeep

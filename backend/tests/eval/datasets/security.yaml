@@ -1,0 +1,59 @@
+# What each test account gets (roles from `seed-test-users`, row rules and attributes set by the fixture):
+#   test-sales: top-level documents, the spreadsheet, northwind; rows: region = East, country = Germany
+#   test-hr:    the hr/ folder only
+# Checks:
+#   refusal: must say it has no access / couldn't find it, with no result table and no invented numbers
+#   not_cited / not_in_answer: a source that must not be cited, words that must not appear
+#   reference: a filtered reference query (run as admin); its rows must appear in the user's results
+#   cite: a source that must be cited
+
+- id: sales-cannot-read-hr
+  user: test-sales
+  question: How many days of annual leave do employees get?
+  not_cited: hr/hr-handbook-sample.docx
+  not_in_answer: ["27 days"]
+
+- id: hr-reads-hr
+  user: test-hr
+  question: How many days of annual leave do employees get?
+  cite: {source: hr/hr-handbook-sample.docx}
+
+- id: hr-no-spreadsheets
+  user: test-hr
+  question: What are the total sales in the spreadsheet?
+  refusal: true
+
+- id: hr-no-databases
+  user: test-hr
+  question: Who were the top 3 Northwind customers by revenue in 1997?
+  refusal: true
+
+- id: sales-no-pubs
+  user: test-sales
+  question: Which authors are published by Algodata Infosystems in the pubs database?
+  refusal: true
+
+- id: sales-sees-only-east
+  user: test-sales
+  question: What are the total sales in the spreadsheet?
+  source: spreadsheet
+  reference: SELECT ROUND(SUM(sales), 2) FROM amazon_store_sales_data WHERE region = 'East'
+  restricted: true
+
+- id: sales-sees-only-german-customers
+  user: test-sales
+  question: Who were the top 3 Northwind customers by revenue in 1997?
+  source: northwind
+  reference: >
+    WITH r AS (SELECT TOP 3 o.CustomerID, SUM(od.UnitPrice * od.Quantity * (1 - od.Discount)) AS revenue
+    FROM dbo.Orders o JOIN dbo.[Order Details] od ON od.OrderID = o.OrderID
+    JOIN dbo.Customers c ON c.CustomerID = o.CustomerID
+    WHERE YEAR(o.OrderDate) = 1997 AND c.Country = 'Germany'
+    GROUP BY o.CustomerID ORDER BY revenue DESC)
+    SELECT c.CompanyName FROM r JOIN dbo.Customers c ON c.CustomerID = r.CustomerID
+  restricted: true
+
+- id: sales-no-french-customers
+  user: test-sales
+  question: Which customers are from France in the Northwind database?
+  not_in_answer: [Blondesddsl, "Bon app", Folies gourmandes, Spécialités du monde]
