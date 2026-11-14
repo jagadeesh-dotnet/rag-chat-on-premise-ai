@@ -2,3 +2,10 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.ruff_cache/
+
+# Files the app creates at runtime (the documents in data/docs stay committed)
+data/qdrant/
+data/cache/
+data/*.db
+*.local.json
