@@ -32,138 +32,41 @@ vector database and the data. No cloud API is used and no data leaves the comput
 
 ## Overall architecture
 
-### Layers
+![Overall architecture: ingestion pipeline, retrieval and generation, evaluation](docs/images/architecture.drawio.svg)
 
-The app is built in five layers. A question goes down through the layers, and the answer comes back up.
+The diagram is a draw.io file. To change it, open `docs/images/architecture.drawio.svg` in
+[draw.io](https://www.drawio.com) (desktop app, or the "Draw.io Integration" extension in VS Code) and save
+it again; GitHub shows the updated picture.
 
-```mermaid
-flowchart TB
-    subgraph L1["① Presentation layer · Angular 16 · runs in the browser"]
-        P2["📊 Tables and charts<br/>CSV · PNG · copy"]:::fe
-        P1["💬 Chat page<br/>streaming answers"]:::fe
-        P3["🛠️ Admin pages<br/>users · roles · row rules"]:::fe
-    end
+**1. Ingestion pipeline** – runs when the admin indexes the documents.
 
-    subgraph L2["② API and security layer · FastAPI"]
-        S2["🔐 Login and sessions<br/>bcrypt · HttpOnly cookie"]:::be
-        S1["🌐 REST API<br/>NDJSON stream"]:::be
-        S3["✅ Permission checks<br/>folders · spreadsheets · databases"]:::be
-    end
+- **Extraction:** PDF, Word and image files from `data/docs` are read into sections (text with page and
+  heading). Scanned pages are read with OCR, and repeated headers and footers are removed.
+- **Chunking:** sections are cut into chunks of about 1200 characters with 200 characters of overlap.
+- **Embedding:** every chunk gets a dense vector (meaning, from `nomic-embed-text`), a sparse BM25 vector
+  (keywords) and metadata (source, page, heading, clause numbers, file hash).
+- **Store:** each chunk is saved as one point in Qdrant. Only changed files are processed again.
 
-    subgraph L3["③ AI layer · agent + Ollama"]
-        A2["🧠 qwen3:14b<br/>chat model"]:::ai
-        A1["🤖 Agent<br/>chooses the right tool"]:::ai
-        A3["🔢 nomic-embed-text<br/>embedding model"]:::ai
-    end
+**2. Retrieval + generation** – runs for every question.
 
-    subgraph L4["④ Data access layer"]
-        D1["🔎 Hybrid search<br/>meaning + keywords"]:::acc
-        D2["🛡️ SQL guard<br/>read-only · row rules"]:::guard
-        D3["🔑 Accounts and chats<br/>as chat_app"]:::acc
-    end
+- The user asks in the Angular chat. FastAPI checks the session and what this user is allowed to see.
+- The **agent** gives the question to `qwen3:14b` along with the tools. The model decides which tool it needs.
+- **Hybrid retrieval** (documents): the question is searched three ways – by meaning, by keywords and by
+  clause numbers – only in files the user may see. The lists are merged with RRF, weak matches are cut
+  off, and the top 5 passages go back to the model with numbers for citations.
+- **Text-to-SQL** (spreadsheets and databases): the model writes SQL. The SQL guard allows only one
+  read-only SELECT, row rules filter the rows, and the query runs in DuckDB or in SQL Server as the
+  read-only `chat_reader`.
+- The model writes the answer from these results, and it streams back to the user with citations,
+  tables and charts.
 
-    subgraph L5["⑤ Storage layer · all on this machine"]
-        T1[("📄 Qdrant<br/>document index")]:::data
-        T2[("📊 DuckDB<br/>Excel · CSV")]:::data
-        T3[("🗄️ SQL Server<br/>Northwind · pubs")]:::data
-        T4[("👥 RagChatApp<br/>users · roles · audit")]:::app
-        T5[("🕘 SQLite<br/>saved chats")]:::app
-    end
+**3. Evaluation** – `pytest -m eval`, run by the developer.
 
-    P1 ~~~ S1 ~~~ A1 ~~~ D2 ~~~ T3
-
-    classDef fe    fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px,color:#111
-    classDef be    fill:#c7d2fe,stroke:#4338ca,stroke-width:2px,color:#111
-    classDef ai    fill:#e9d5ff,stroke:#7e22ce,stroke-width:2px,color:#111
-    classDef acc   fill:#a5f3fc,stroke:#0e7490,stroke-width:2px,color:#111
-    classDef guard fill:#fecaca,stroke:#b91c1c,stroke-width:2px,color:#111
-    classDef data  fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111
-    classDef app   fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#111
-
-    style L1 fill:#3b82f61a,stroke:#3b82f6,stroke-width:2px
-    style L2 fill:#6366f11a,stroke:#6366f1,stroke-width:2px
-    style L3 fill:#a855f71a,stroke:#a855f7,stroke-width:2px
-    style L4 fill:#06b6d41a,stroke:#06b6d4,stroke-width:2px
-    style L5 fill:#22c55e1a,stroke:#22c55e,stroke-width:2px
-```
-
-| Layer | What it does |
-|---|---|
-| ① Presentation | The Angular app in the browser: chat, tables and charts, admin pages. |
-| ② API and security | FastAPI receives every request, checks the session, and checks what the user may see. |
-| ③ AI | The agent sends the question to the local model and runs the tools the model asks for. |
-| ④ Data access | Searches documents, checks and rewrites SQL (read-only, row rules), reads and writes accounts and chats. |
-| ⑤ Storage | Where the data lives: Qdrant, DuckDB, SQL Server and SQLite, all on this machine. |
-
-### How the parts connect
-```mermaid
-flowchart TB
-    U(["👤 User<br/>in the browser"]):::user
-
-    subgraph FE["🖥️ Frontend · Angular 16 · port 4200"]
-        UI["💬 Chat page<br/>tables · charts · admin pages"]:::fe
-    end
-
-    subgraph BE["⚙️ Backend · FastAPI · port 8000"]
-        API["🔐 Login and permissions<br/>checked on every request"]:::be
-        AG["🤖 Agent<br/>decides which tool to use"]:::be
-        GD["🛡️ SQL guard<br/>read-only · row rules"]:::guard
-    end
-
-    subgraph AI["🧠 Ollama · local AI · port 11434"]
-        LLM["qwen3:14b<br/>chat model"]:::ai
-        EMB["nomic-embed-text<br/>embedding model"]:::ai
-    end
-
-    subgraph SRC["📚 Your data"]
-        DOC[("📄 Documents<br/>PDF · Word · images<br/>searched with Qdrant")]:::data
-        XLS[("📊 Spreadsheets<br/>Excel · CSV<br/>queried with DuckDB")]:::data
-        DB[("🗄️ Databases<br/>Northwind · pubs<br/>SQL Server")]:::data
-    end
-
-    subgraph APP["🔑 App data"]
-        ACC[("👥 Users · roles · audit<br/>RagChatApp")]:::app
-        CH[("🕘 Saved chats<br/>SQLite")]:::app
-    end
-
-    U --> UI
-    UI -- "question" --> API
-    API --> AG
-    AG <-- "prompt and tool calls" --> LLM
-    AG -- "search" --> DOC
-    DOC -. "embeddings" .- EMB
-    AG -- "SQL" --> GD
-    GD --> XLS
-    GD --> DB
-    API --> ACC
-    API --> CH
-
-    classDef user  fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#111
-    classDef fe    fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px,color:#111
-    classDef be    fill:#c7d2fe,stroke:#4338ca,stroke-width:2px,color:#111
-    classDef guard fill:#fecaca,stroke:#b91c1c,stroke-width:2px,color:#111
-    classDef ai    fill:#e9d5ff,stroke:#7e22ce,stroke-width:2px,color:#111
-    classDef data  fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111
-    classDef app   fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#111
-
-    style FE  fill:#3b82f61a,stroke:#3b82f6,stroke-width:2px
-    style BE  fill:#6366f11a,stroke:#6366f1,stroke-width:2px
-    style AI  fill:#a855f71a,stroke:#a855f7,stroke-width:2px
-    style SRC fill:#22c55e1a,stroke:#22c55e,stroke-width:2px
-    style APP fill:#f973161a,stroke:#f97316,stroke-width:2px
-```
-
-**In simple words**
-
-1. The user types a question in the **Angular** chat page.
-2. The **backend** checks who the user is and what they are allowed to see.
-3. The **agent** sends the question to the local **qwen3** model, which decides what it needs:
-   a document search, a spreadsheet query or a database query.
-4. Document questions are searched in **Qdrant** (the embedding model turns text into vectors).
-   Number questions become SQL, which passes the **SQL guard** (read-only, row rules) before it runs.
-5. The results go back to the model, it writes the answer with citations, and the answer streams to the
-   browser with tables and charts.
-6. Users, roles and the audit log are kept in **RagChatApp** (SQL Server); saved chats in **SQLite**.
+- 45 questions with known good answers (YAML files) are asked to the running app, as the test users.
+- Five graders check them: retrieval (right page in the top 3), SQL answers (same rows as a reference
+  query), document answers (facts, citations, "not found"), the LLM judge (every claim supported by the
+  passages) and security (users see only their files and rows).
+- The result is written to a report that shows the change since the last full run.
 
 **How one question is answered**
 
