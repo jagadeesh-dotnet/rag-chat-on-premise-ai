@@ -46,14 +46,23 @@ it again; GitHub shows the updated picture.
 - **Embedding:** every chunk gets a dense vector (meaning, from `nomic-embed-text`), a sparse BM25 vector
   (keywords) and metadata (source, page, heading, clause numbers, file hash).
 - **Store:** each chunk is saved as one point in Qdrant. Only changed files are processed again.
+- **Spreadsheets** are not chunked. Each sheet becomes a table in DuckDB (total rows dropped), and it is
+  loaded again when the file changes.
 
 **2. Retrieval + generation** – runs for every question.
 
 - The user asks in the Angular chat. FastAPI checks the session and what this user is allowed to see.
-- The **agent** gives the question to `qwen3:14b` along with the tools. The model decides which tool it needs.
-- **Hybrid retrieval** (documents): the question is searched three ways – by meaning, by keywords and by
-  clause numbers – only in files the user may see. The lists are merged with RRF, weak matches are cut
-  off, and the top 5 passages go back to the model with numbers for citations.
+  Accounts, roles and the audit log are in the `RagChatApp` database; saved chats are in SQLite.
+- **Prompt helpers:** before the model starts, a quick pre-search tells it which files have related
+  passages (so it does not answer from its own knowledge), and a short reminder in the latest question
+  tells it to look things up again instead of reusing numbers from earlier answers.
+- The **agent** gives the question to `qwen3:14b` along with the tools. The model decides which tool it
+  needs, for at most 4 rounds.
+- **Hybrid retrieval** (documents): the question is searched three ways – by meaning, by keywords, and by
+  meaning again only among chunks that contain the clause number asked for (like A.5.15) – and only in
+  files the user may see. The top 20 of each list are merged with RRF (weights 1, 1, 3). Matches with
+  cosine below 0.6 are dropped, except the exact clause that was asked for, and the top 5 passages go
+  back to the model with numbers for citations.
 - **Text-to-SQL** (spreadsheets and databases): the model writes SQL. The SQL guard allows only one
   read-only SELECT, row rules filter the rows, and the query runs in DuckDB or in SQL Server as the
   read-only `chat_reader`.
