@@ -32,6 +32,70 @@ vector database and the data. No cloud API is used and no data leaves the comput
 
 ## Overall architecture
 
+### Layers
+
+The app is built in five layers. A question goes down through the layers, and the answer comes back up.
+
+```mermaid
+flowchart TB
+    subgraph L1["① Presentation layer · Angular 16 · runs in the browser"]
+        P2["📊 Tables and charts<br/>CSV · PNG · copy"]:::fe
+        P1["💬 Chat page<br/>streaming answers"]:::fe
+        P3["🛠️ Admin pages<br/>users · roles · row rules"]:::fe
+    end
+
+    subgraph L2["② API and security layer · FastAPI"]
+        S2["🔐 Login and sessions<br/>bcrypt · HttpOnly cookie"]:::be
+        S1["🌐 REST API<br/>NDJSON stream"]:::be
+        S3["✅ Permission checks<br/>folders · spreadsheets · databases"]:::be
+    end
+
+    subgraph L3["③ AI layer · agent + Ollama"]
+        A2["🧠 qwen3:14b<br/>chat model"]:::ai
+        A1["🤖 Agent<br/>chooses the right tool"]:::ai
+        A3["🔢 nomic-embed-text<br/>embedding model"]:::ai
+    end
+
+    subgraph L4["④ Data access layer"]
+        D1["🔎 Hybrid search<br/>meaning + keywords"]:::acc
+        D2["🛡️ SQL guard<br/>read-only · row rules"]:::guard
+        D3["🔑 Accounts and chats<br/>as chat_app"]:::acc
+    end
+
+    subgraph L5["⑤ Storage layer · all on this machine"]
+        T1[("📄 Qdrant<br/>document index")]:::data
+        T2[("📊 DuckDB<br/>Excel · CSV")]:::data
+        T3[("🗄️ SQL Server<br/>Northwind · pubs")]:::data
+        T4[("👥 RagChatApp<br/>users · roles · audit")]:::app
+        T5[("🕘 SQLite<br/>saved chats")]:::app
+    end
+
+    P1 ~~~ S1 ~~~ A1 ~~~ D2 ~~~ T3
+
+    classDef fe    fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px,color:#111
+    classDef be    fill:#c7d2fe,stroke:#4338ca,stroke-width:2px,color:#111
+    classDef ai    fill:#e9d5ff,stroke:#7e22ce,stroke-width:2px,color:#111
+    classDef acc   fill:#a5f3fc,stroke:#0e7490,stroke-width:2px,color:#111
+    classDef guard fill:#fecaca,stroke:#b91c1c,stroke-width:2px,color:#111
+    classDef data  fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111
+    classDef app   fill:#fed7aa,stroke:#c2410c,stroke-width:2px,color:#111
+
+    style L1 fill:#3b82f61a,stroke:#3b82f6,stroke-width:2px
+    style L2 fill:#6366f11a,stroke:#6366f1,stroke-width:2px
+    style L3 fill:#a855f71a,stroke:#a855f7,stroke-width:2px
+    style L4 fill:#06b6d41a,stroke:#06b6d4,stroke-width:2px
+    style L5 fill:#22c55e1a,stroke:#22c55e,stroke-width:2px
+```
+
+| Layer | What it does |
+|---|---|
+| ① Presentation | The Angular app in the browser: chat, tables and charts, admin pages. |
+| ② API and security | FastAPI receives every request, checks the session, and checks what the user may see. |
+| ③ AI | The agent sends the question to the local model and runs the tools the model asks for. |
+| ④ Data access | Searches documents, checks and rewrites SQL (read-only, row rules), reads and writes accounts and chats. |
+| ⑤ Storage | Where the data lives: Qdrant, DuckDB, SQL Server and SQLite, all on this machine. |
+
+### How the parts connect
 ```mermaid
 flowchart TB
     U(["👤 User<br/>in the browser"]):::user
