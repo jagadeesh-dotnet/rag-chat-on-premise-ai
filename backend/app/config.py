@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     ocr_min_chars: int = 50  # a page with less text than this (and an image on it) is OCR'd
     ocr_dpi: int = 200  # render resolution for OCR: higher = sharper but slower
     ocr_min_confidence: float = 0.5  # drop recognised text the engine is unsure about
+    sql_server: str = "localhost"
+    odbc_driver: str = "ODBC Driver 18 for SQL Server"
+    databases_file: Path = BACKEND_DIR / "databases.json"
+    db_reader_user: str = "chat_reader"  # read-only user the model's SQL runs as (EXECUTE AS USER)
+    db_login_timeout_s: int = 5
+    schema_recheck_s: int = 300  # how often to check whether a database schema changed
     max_result_rows: int = 50  # rows from a SQL query given to the model and the UI
     query_timeout_s: float = 10  # SQL queries running longer are stopped
     search_k: int = 5  # passages per search given to the model
