@@ -1,3 +1,4 @@
+from app.routers import chat
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+app.include_router(chat.router)
 
 @app.get("/api/health")
 async def health() -> dict:

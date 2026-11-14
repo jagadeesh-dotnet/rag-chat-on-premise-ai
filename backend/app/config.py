@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     embed_model: str = "nomic-embed-text"
     cors_origins: list[str] = ["http://localhost:4200"]
     data_dir: Path = PROJECT_ROOT / "data"
+    think: bool = False
 
 
 # Shared settings instance
