@@ -1,0 +1,22 @@
+[
+  {
+    "name": "northwind",
+    "database": "Northwind",
+    "description": "Sample trading company (1996-1998): customers, orders, order lines, products, categories, suppliers, employees, shippers.",
+    "notes": [
+      "Revenue of an order line = UnitPrice * Quantity * (1 - Discount) from [Order Details]; order revenue = SUM over its lines.",
+      "Order dates are in Orders.OrderDate; filter a year with YEAR(o.OrderDate) = 1997.",
+      "Customer names are Customers.CompanyName; employee names are FirstName + ' ' + LastName."
+    ]
+  },
+  {
+    "name": "pubs",
+    "database": "pubs",
+    "description": "Book publisher: titles, authors (linked to titles through titleauthor), publishers, stores, sales, employees.",
+    "notes": [
+      "Authors and titles are many-to-many: join authors -> titleauthor -> titles.",
+      "Units sold are sales.qty; a title's price is titles.price; sales revenue = qty * price.",
+      "Author names are au_fname + ' ' + au_lname."
+    ]
+  }
+]
