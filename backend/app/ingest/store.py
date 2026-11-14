@@ -11,8 +11,8 @@ from app.ingest.models import Chunk
 from app.ingest.sparse import (
     document_vector,
     extract_identifiers,
-    identifier_keys,
     query_vector,
+    scoped_identifiers,
     title_identifiers,
 )
 
@@ -76,8 +76,8 @@ class DocumentStore:
                     payload={
                         **chunk.to_dict(),
                         "file_hash": file_hash,
-                        "idents": identifier_keys(extract_identifiers(text)),
-                        "title_idents": identifier_keys(title_identifiers(text)),
+                        "idents": scoped_identifiers(extract_identifiers(text), chunk.heading),
+                        "title_idents": scoped_identifiers(title_identifiers(text), chunk.heading),
                     },
                 )
             )
@@ -130,7 +130,7 @@ class DocumentStore:
         min_score = settings.min_score if min_score is None else min_score
         dense_vector = embed_query(query)  # outside the lock: it calls Ollama
         indices, values = query_vector(query)
-        wanted = identifier_keys(extract_identifiers(query))
+        wanted = extract_identifiers(query)  # "clause 6.2" -> 6.2 (main text), "A.5.15" -> Annex A only
 
         with self._lock:
             if not self._client.collection_exists(self._collection):

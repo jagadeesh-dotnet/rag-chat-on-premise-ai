@@ -1,8 +1,8 @@
 from app.ingest.sparse import (
     document_vector,
     extract_identifiers,
-    identifier_keys,
     query_vector,
+    scoped_identifiers,
     term_index,
     title_identifiers,
     tokenize,
@@ -39,8 +39,13 @@ def test_extract_identifiers():
     assert extract_identifiers("See clause 6.2 and control A.5.15, not page 6") == ["6.2", "A.5.15"]
 
 
-def test_identifier_keys_adds_form_without_letter_prefix():
-    assert identifier_keys(["A.5.15", "6.2"]) == ["5.15", "6.2", "A.5.15"]
+def test_scoped_identifiers_prefixes_numbers_inside_an_annex():
+    assert scoped_identifiers(["5.15", "6.2", "A.8.1"], "Annex A") == ["A.5.15", "A.6.2", "A.8.1"]
+
+
+def test_scoped_identifiers_leaves_main_text_alone():
+    assert scoped_identifiers(["6.2"], None) == ["6.2"]
+    assert scoped_identifiers(["6.2"], "Annual leave") == ["6.2"]
 
 
 def test_title_identifiers_only_counts_lines_that_start_a_clause():

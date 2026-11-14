@@ -114,11 +114,18 @@ def extract_identifiers(text: str) -> list[str]:
 _TITLE_LINE = re.compile(r"^\s*((?:[A-Z]\.)?\d+(?:\.\d+)+)\s+[A-Z]", re.MULTILINE)
 
 
-def identifier_keys(identifiers: list[str]) -> list[str]:
-    """Each identifier plus its form without a letter prefix, so 'A.5.15' also matches '5.15'."""
-    keys = set(identifiers)
-    keys.update(i.split(".", 1)[1] for i in identifiers if i[0].isalpha())
-    return sorted(keys)
+_ANNEX = re.compile(r"^Annex ([A-Z])\b")
+
+
+def scoped_identifiers(identifiers: list[str], heading: str | None) -> list[str]:
+    """Inside 'Annex A' tables write controls as '5.15'; their real name is 'A.5.15'.
+
+    Prefixing them keeps Annex A control 6.2 apart from clause 6.2 of the main text.
+    """
+    annex = _ANNEX.match(heading or "")
+    if not annex:
+        return identifiers
+    return sorted({i if i[0].isalpha() else f"{annex.group(1)}.{i}" for i in identifiers})
 
 
 def title_identifiers(text: str) -> list[str]:

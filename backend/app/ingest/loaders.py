@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 from pathlib import Path
 
 import pymupdf
@@ -16,14 +17,31 @@ SPREADSHEETS = {".xlsx", ".xls", ".csv"}  # handled as SQL tables in step 7, not
 DOCUMENT_TYPES = {".pdf", ".docx", ".doc"}  # what the indexer embeds
 
 
+# A line that is only "Annex A" starts an annex (the table of contents line has more text, so it doesn't match).
+_ANNEX_START = re.compile(r"^\s*(Annex [A-Z])\s*$", re.MULTILINE)
+_ANNEX_END = re.compile(r"^\s*Bibliography\s*$", re.MULTILINE)
+
+
 def load_pdf(path: Path) -> list[Section]:
-    """One section per page, with repeated headers/footers removed."""
+    """One section per page, with repeated headers/footers removed.
+
+    Pages inside an annex get heading "Annex A" etc., so its "6.2" isn't confused with clause 6.2.
+    """
     with pymupdf.open(path) as pdf:
         if pdf.needs_pass:
             raise ValueError("the PDF is password-protected")
         pages = [clean_text(page.get_text()) for page in pdf]  # default reading order, no sort=True
     pages = remove_repeated_lines(pages)
-    return [Section(text=text, page=number) for number, text in enumerate(pages, start=1) if text.strip()]
+
+    sections, part = [], None
+    for number, text in enumerate(pages, start=1):
+        if start := _ANNEX_START.search(text):
+            part = start.group(1)
+        elif _ANNEX_END.search(text):
+            part = None
+        if text.strip():
+            sections.append(Section(text=text, page=number, heading=part))
+    return sections
 
 
 def _table_lines(table: Table) -> list[str]:
