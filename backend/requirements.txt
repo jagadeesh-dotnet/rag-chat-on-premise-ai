@@ -1,0 +1,9 @@
+fastapi[standard]
+qdrant-client
+python-dotenv
+pydantic
+pydantic-settings
+pytest
+httpx
+ruff
+ipykernel
