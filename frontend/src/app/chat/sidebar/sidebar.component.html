@@ -1,0 +1,35 @@
+<nav class="sidebar" (click)="menuFor = null">
+  <button type="button" class="new-chat" (click)="newChat.emit()">＋ New chat</button>
+
+  <div class="list">
+    <ng-container *ngFor="let group of groups$ | async">
+      <h3>{{ group.label }}</h3>
+      <div
+        *ngFor="let item of group.items; trackBy: trackById"
+        class="item"
+        [class.active]="item.id === activeId"
+        (click)="editingId !== item.id && open(item.id)"
+      >
+        <input
+          *ngIf="editingId === item.id; else titleText"
+          class="rename"
+          [(ngModel)]="editTitle"
+          maxlength="100"
+          (keydown.enter)="saveRename()"
+          (keydown.escape)="editingId = null"
+          (blur)="saveRename()"
+          (click)="$event.stopPropagation()"
+          autofocus
+        />
+        <ng-template #titleText><span class="title" [title]="item.title">{{ item.title }}</span></ng-template>
+
+        <button type="button" class="icon menu" title="Options" (click)="toggleMenu(item.id, $event)">⋯</button>
+        <div class="menu-popup" *ngIf="menuFor === item.id">
+          <button type="button" (click)="startRename(item, $event)">Rename</button>
+          <button type="button" class="danger" (click)="remove(item, $event)">Delete</button>
+        </div>
+      </div>
+    </ng-container>
+    <p class="empty" *ngIf="!(groups$ | async)?.length">No saved chats yet.</p>
+  </div>
+</nav>

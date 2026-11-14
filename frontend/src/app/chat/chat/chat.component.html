@@ -1,53 +1,85 @@
-<div class="chat">
-  <div class="messages" #scroller>
-    <p class="empty" *ngIf="!messages.length">Ask me anything.</p>
+<div class="layout" [class.sidebar-open]="sidebarOpen">
+  <app-sidebar [activeId]="conversationId" (newChat)="newChat()" (picked)="sidebarOpen = false"></app-sidebar>
+  <div class="scrim" (click)="sidebarOpen = false"></div>
 
-    <div *ngFor="let m of messages" class="message" [class.user]="m.role === 'user'" [class.error]="m.error">
-      <details *ngIf="m.thinking" class="thinking">
-        <summary>Thinking…</summary>
-        {{ m.thinking }}
-      </details>
-      <div *ngFor="let step of m.steps" class="step">🔎 {{ step }}</div>
-      <div *ngFor="let t of m.tables" class="result">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th *ngFor="let c of t.columns">{{ c }}</th></tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let row of t.rows">
-                <td *ngFor="let v of row" [class.numeric]="isNumber(v)">{{ formatCell(v) }}</td>
-              </tr>
-            </tbody>
-          </table>
+  <main class="main">
+    <header class="topbar">
+      <button type="button" class="icon menu-button" title="Chats" (click)="sidebarOpen = !sidebarOpen">☰</button>
+      <span class="topbar-title">{{ title }}</span>
+      <button type="button" class="icon" title="New chat" (click)="newChat()">＋</button>
+    </header>
+
+    <div class="messages" #scroller>
+      <div class="thread">
+        <div class="welcome" *ngIf="!messages.length">
+          <h1>What would you like to know?</h1>
+          <p>Answers come from your documents, spreadsheets and databases.</p>
+          <div class="examples">
+            <button type="button" *ngFor="let e of examples" (click)="send(e)">{{ e }}</button>
+          </div>
         </div>
-        <p *ngIf="t.truncated" class="note">Only the first {{ t.rows.length }} rows are shown.</p>
-        <details class="sql">
-          <summary>SQL · {{ t.database ?? 'spreadsheets' }}</summary>
-          <pre>{{ t.sql }}</pre>
-        </details>
-      </div>
-      <div class="content">{{ m.content || (streaming ? '…' : '') }}</div>
-      <ol *ngIf="m.sources?.length" class="sources">
-        <li *ngFor="let s of m.sources" [title]="s.snippet">
-          <span class="num">[{{ s.number }}]</span>
-          {{ s.source }}<ng-container *ngIf="s.page"> · page {{ s.page }}</ng-container
-          ><ng-container *ngIf="s.heading"> · {{ s.heading }}</ng-container>
-        </li>
-      </ol>
-    </div>
-  </div>
 
-  <form class="composer" (ngSubmit)="send()">
-    <textarea
-      name="input"
-      [(ngModel)]="input"
-      (keydown)="onKeydown($event)"
-      maxlength="8000"
-      rows="3"
-      placeholder="Type a message (Enter to send, Shift+Enter for a new line)"
-    ></textarea>
-    <button *ngIf="!streaming" type="submit" [disabled]="!input.trim()">Send</button>
-    <button *ngIf="streaming" type="button" (click)="stop()">Stop</button>
-  </form>
+        <ng-container *ngFor="let m of messages; let i = index; let last = last">
+          <div *ngIf="m.role === 'user'" class="message user">{{ m.content }}</div>
+
+          <div *ngIf="m.role === 'assistant'" class="message assistant" [class.error]="m.error">
+            <details *ngIf="m.thinking" class="thinking">
+              <summary>Thinking…</summary>
+              {{ m.thinking }}
+            </details>
+
+            <details *ngIf="m.steps?.length" class="work" [open]="streaming && last">
+              <summary>🔎 {{ workSummary(m, last) }}</summary>
+              <ul>
+                <li *ngFor="let step of m.steps">{{ step }}</li>
+              </ul>
+            </details>
+
+            <app-result-card *ngFor="let t of m.tables" [table]="t"></app-result-card>
+
+            <div
+              class="content markdown"
+              *ngIf="m.content; else pending"
+              [innerHTML]="m.content | markdown"
+              (click)="onAnswerClick($event, i)"
+            ></div>
+            <ng-template #pending><div class="pending" *ngIf="streaming && last">…</div></ng-template>
+
+            <ol *ngIf="m.sources?.length" class="sources">
+              <li
+                *ngFor="let s of m.sources"
+                [id]="'src-' + i + '-' + s.number"
+                [class.flash]="highlighted === i + '-' + s.number"
+                [title]="s.snippet"
+              >
+                <span class="num">[{{ s.number }}]</span>
+                {{ s.source }}<ng-container *ngIf="s.page"> · page {{ s.page }}</ng-container
+                ><ng-container *ngIf="s.heading"> · {{ s.heading }}</ng-container>
+              </li>
+            </ol>
+
+            <div class="message-actions" *ngIf="last && !streaming">
+              <button type="button" class="icon" title="Regenerate answer" (click)="regenerate()">↻ Regenerate</button>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+
+    <form class="composer" (ngSubmit)="send()">
+      <div class="composer-box">
+        <textarea
+          name="input"
+          [(ngModel)]="input"
+          (keydown)="onKeydown($event)"
+          maxlength="8000"
+          rows="2"
+          placeholder="Ask about your documents, spreadsheets or databases…"
+        ></textarea>
+        <button *ngIf="!streaming" type="submit" class="send" [disabled]="!input.trim()" title="Send (Enter)">↑</button>
+        <button *ngIf="streaming" type="button" class="send" (click)="stop()" title="Stop">■</button>
+      </div>
+      <p class="hint">Enter to send · Shift+Enter for a new line</p>
+    </form>
+  </main>
 </div>
