@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     ocr_min_chars: int = 50  # a page with less text than this (and an image on it) is OCR'd
     ocr_dpi: int = 200  # render resolution for OCR: higher = sharper but slower
     ocr_min_confidence: float = 0.5  # drop recognised text the engine is unsure about
+    max_result_rows: int = 50  # rows from a SQL query given to the model and the UI
+    query_timeout_s: float = 10  # SQL queries running longer are stopped
     search_k: int = 5  # passages per search given to the model
     num_ctx: int = 16384  # model context window; Ollama's small default silently drops the system prompt
     max_tool_rounds: int = 4  # searches per answer before the model must answer
