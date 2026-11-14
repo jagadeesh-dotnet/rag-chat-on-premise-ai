@@ -33,6 +33,14 @@
 }
 
 .source { font-size: 0.8em; color: var(--muted); }
+.filtered {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--highlight);
+  color: var(--text);
+  cursor: help;
+}
 .actions { display: flex; align-items: center; gap: 2px; font-size: 0.8em; }
 
 .toggle {

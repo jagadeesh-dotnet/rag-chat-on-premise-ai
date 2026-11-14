@@ -4,7 +4,7 @@ import { AdminService, AuditEntry, errorText } from '../admin.service';
 
 const ACTIONS = [
   'login_ok', 'login_failed', 'login_locked', 'logout', 'password_changed', 'password_reset',
-  'user_created', 'user_updated', 'role_saved', 'role_deleted',
+  'user_created', 'user_updated', 'role_saved', 'role_deleted', 'rule_added', 'rule_deleted', 'migrated',
 ];
 
 @Component({

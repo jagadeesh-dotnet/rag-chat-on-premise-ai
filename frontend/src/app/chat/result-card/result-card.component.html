@@ -1,7 +1,15 @@
 <div class="backdrop" *ngIf="expanded" (click)="close()"></div>
 <section class="card" [class.expanded]="expanded">
   <header class="toolbar">
-    <span class="source">{{ source }} · {{ table.rows.length }} rows{{ table.truncated ? ' (first only)' : '' }}</span>
+    <span class="source">
+      {{ source }} · {{ table.rows.length }} rows{{ table.truncated ? ' (first only)' : '' }}
+      <span
+        class="filtered"
+        *ngIf="table.restricted?.length"
+        [title]="'Limited to the rows you may see: ' + table.restricted?.join(', ')"
+        >🔒 only your rows</span
+      >
+    </span>
     <div class="actions">
       <div class="toggle" *ngIf="spec">
         <button type="button" [class.on]="view === 'chart'" (click)="view = 'chart'">Chart</button>

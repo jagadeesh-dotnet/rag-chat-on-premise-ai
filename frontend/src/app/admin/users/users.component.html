@@ -28,7 +28,7 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>User</th><th>Roles</th><th>Status</th><th>Last sign-in</th><th></th></tr>
+        <tr><th>User</th><th>Roles</th><th>Attributes <span class="hint">(for row rules)</span></th><th>Status</th><th>Last sign-in</th><th></th></tr>
       </thead>
       <tbody>
         <tr *ngFor="let u of users" [class.inactive]="!u.is_active">
@@ -40,6 +40,23 @@
             <label class="chip" *ngFor="let r of roles">
               <input type="checkbox" [checked]="u.roles.includes(r.name)" (change)="toggleRole(u, r.name)" /> {{ r.name }}
             </label>
+          </td>
+          <td class="attributes">
+            <ng-container *ngIf="editingAttributes === u.id; else showAttributes">
+              <input
+                class="attr-input"
+                [(ngModel)]="attributeText"
+                placeholder="region=East; country=Germany"
+                (keydown.enter)="saveAttributes(u)"
+                (keydown.escape)="editingAttributes = null"
+              />
+              <div class="hint">name=value, value; next=value · Enter to save</div>
+            </ng-container>
+            <ng-template #showAttributes>
+              <span class="attr" *ngFor="let a of u.attributes | keyvalue">{{ a.key }}={{ a.value.join(', ') }}</span>
+              <span class="hint" *ngIf="!(u.attributes | keyvalue).length">—</span>
+              <button type="button" class="link-button" (click)="editAttributes(u)">edit</button>
+            </ng-template>
           </td>
           <td>
             {{ u.is_active ? 'Active' : 'Deactivated' }}

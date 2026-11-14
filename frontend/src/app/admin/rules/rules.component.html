@@ -1,0 +1,68 @@
+<section>
+  <div class="bar">
+    <h2>Row rules</h2>
+    <button type="button" class="primary" (click)="start()" *ngIf="!adding">＋ New rule</button>
+  </div>
+  <p class="hint">
+    A rule limits a table to the rows whose column matches the user's attribute (set on the Users page). It applies to
+    everyone except admins. A user without the attribute sees no rows of that table. Database rules also limit tables
+    that point to it (e.g. a rule on Customers also limits Orders and Order Details).
+  </p>
+  <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+
+  <form class="panel" *ngIf="adding" (ngSubmit)="save()" #form="ngForm">
+    <div class="row">
+      <label>
+        Kind
+        <select name="kind" [(ngModel)]="draft.kind" (change)="changeKind()">
+          <option value="spreadsheet">Spreadsheet</option>
+          <option value="database">Database</option>
+        </select>
+      </label>
+      <label *ngIf="draft.kind === 'database'">
+        Database
+        <select name="source" [(ngModel)]="draft.source" (change)="draft.table = ''; draft.column = ''" required>
+          <option *ngFor="let d of resources?.database" [value]="d">{{ d }}</option>
+        </select>
+      </label>
+      <label>
+        Table
+        <select name="table" [(ngModel)]="draft.table" (change)="draft.column = ''" required>
+          <option *ngFor="let t of tables" [value]="t">{{ t }}</option>
+        </select>
+      </label>
+      <label>
+        Column
+        <select name="column" [(ngModel)]="draft.column" required>
+          <option *ngFor="let c of columns" [value]="c">{{ c }}</option>
+        </select>
+      </label>
+      <label>
+        must match the user's attribute
+        <input name="attribute" [(ngModel)]="draft.attribute" placeholder="region" required pattern="[A-Za-z0-9_\-]+" />
+      </label>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary" [disabled]="!form.valid">Add rule</button>
+      <button type="button" (click)="adding = false">Cancel</button>
+    </div>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Source</th><th>Table</th><th>Column</th><th>= user attribute</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of rules">
+          <td>{{ r.kind === 'spreadsheet' ? 'spreadsheets' : r.source }}</td>
+          <td>{{ r.table_name }}</td>
+          <td><code>{{ r.column_name }}</code></td>
+          <td><code>{{ r.attribute }}</code></td>
+          <td class="row-actions"><button type="button" class="danger" (click)="remove(r)">Delete</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="hint" *ngIf="!rules.length">No row rules: everyone sees all rows of the tables their roles allow.</p>
+</section>

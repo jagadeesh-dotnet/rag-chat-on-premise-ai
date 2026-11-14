@@ -2,7 +2,15 @@ import { Component, OnInit } from '@angular/core';
 import { forkJoin } from 'rxjs';
 
 import { AuthService } from '../../auth/auth.service';
-import { AdminService, AdminUser, Role, errorText, temporaryPassword } from '../admin.service';
+import {
+  AdminService,
+  AdminUser,
+  Role,
+  attributesToText,
+  errorText,
+  temporaryPassword,
+  textToAttributes,
+} from '../admin.service';
 
 @Component({
   selector: 'app-admin-users',
@@ -59,6 +67,19 @@ export class UsersComponent implements OnInit {
   toggleRole(user: AdminUser, role: string): void {
     const roles = user.roles.includes(role) ? user.roles.filter((r) => r !== role) : [...user.roles, role];
     this.run(this.admin.updateUser(user.id, { roles }));
+  }
+
+  editingAttributes: number | null = null;
+  attributeText = '';
+
+  editAttributes(user: AdminUser): void {
+    this.editingAttributes = user.id;
+    this.attributeText = attributesToText(user.attributes);
+  }
+
+  saveAttributes(user: AdminUser): void {
+    this.editingAttributes = null;
+    this.run(this.admin.updateUser(user.id, { attributes: textToAttributes(this.attributeText) }));
   }
 
   toggleActive(user: AdminUser): void {

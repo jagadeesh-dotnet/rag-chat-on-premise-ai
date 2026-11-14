@@ -19,6 +19,7 @@ export interface TableResult {
   columns: string[];
   rows: (string | number | null)[][];
   truncated: boolean;
+  restricted?: string[]; // tables limited to this user's rows by row rules
 }
 
 /** One line of the backend's NDJSON stream. */

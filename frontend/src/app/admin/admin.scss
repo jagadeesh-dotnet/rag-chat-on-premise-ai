@@ -81,3 +81,8 @@ tr.warn td { background: var(--error-bg); }
 .error { color: #dc2626; }
 .notice { background: var(--highlight); padding: 8px 10px; border-radius: 6px; font-size: 0.9em; }
 code { font-size: 0.85em; }
+
+.attr { display: inline-block; background: var(--surface-2); border-radius: 4px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 0.85em; }
+.attr-input { width: 220px; }
+.link-button { border: none; background: none; color: var(--accent); padding: 0 2px; font-size: 0.8em; }
+.link-button:hover { text-decoration: underline; background: none; }

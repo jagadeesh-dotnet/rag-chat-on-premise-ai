@@ -11,11 +11,30 @@ export interface AdminUser {
   id: number;
   username: string;
   display_name: string;
-  is_active: number;
-  must_change_password: number;
+  is_active: boolean;
+  must_change_password: boolean;
   created: string;
   last_login: string | null;
   roles: string[];
+  attributes: Record<string, string[]>; // e.g. { region: ['East'] }, compared by row rules
+}
+
+export interface RowRule {
+  id: number;
+  kind: 'spreadsheet' | 'database';
+  source: string; // 'spreadsheets' or a database name
+  table_name: string;
+  column_name: string;
+  attribute: string;
+  created: string;
+}
+
+/** What can be granted, plus the columns row rules can use. */
+export interface Resources extends Grants {
+  columns: {
+    spreadsheet: Record<string, string[]>; // table -> columns
+    database: Record<string, Record<string, string[]>>; // database -> table -> columns
+  };
 }
 
 export interface Role {
@@ -48,7 +67,10 @@ export class AdminService {
     return this.http.post<{ id: number }>(`${this.url}/users`, user);
   }
 
-  updateUser(id: number, change: { display_name?: string; is_active?: boolean; roles?: string[] }) {
+  updateUser(
+    id: number,
+    change: { display_name?: string; is_active?: boolean; roles?: string[]; attributes?: Record<string, string[]> },
+  ) {
     return this.http.patch(`${this.url}/users/${id}`, change);
   }
 
@@ -68,8 +90,20 @@ export class AdminService {
     return this.http.delete(`${this.url}/roles/${encodeURIComponent(name)}`);
   }
 
-  resources(): Observable<Grants> {
-    return this.http.get<Grants>(`${this.url}/resources`);
+  resources(): Observable<Resources> {
+    return this.http.get<Resources>(`${this.url}/resources`);
+  }
+
+  rules(): Observable<RowRule[]> {
+    return this.http.get<RowRule[]>(`${this.url}/rules`);
+  }
+
+  addRule(rule: { kind: string; source: string; table: string; column: string; attribute: string }) {
+    return this.http.post<{ id: number }>(`${this.url}/rules`, rule);
+  }
+
+  deleteRule(id: number) {
+    return this.http.delete(`${this.url}/rules/${id}`);
   }
 
   audit(username = '', action = ''): Observable<AuditEntry[]> {
@@ -94,4 +128,21 @@ export function errorText(err: { error?: { detail?: unknown } }): string {
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) return detail.map((d) => d?.msg ?? '').join('; ');
   return 'Something went wrong.';
+}
+
+/** { region: ['East', 'West'], country: ['Germany'] }  <->  'region=East, West; country=Germany' */
+export function attributesToText(attributes: Record<string, string[]>): string {
+  return Object.entries(attributes)
+    .map(([name, values]) => `${name}=${values.join(', ')}`)
+    .join('; ');
+}
+
+export function textToAttributes(text: string): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const part of text.split(';')) {
+    const [name, values] = part.split('=');
+    if (!name?.trim() || values === undefined) continue;
+    result[name.trim().toLowerCase()] = values.split(',').map((v) => v.trim()).filter(Boolean);
+  }
+  return result;
 }
