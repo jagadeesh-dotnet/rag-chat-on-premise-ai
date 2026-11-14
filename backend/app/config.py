@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     cache_dir: Path = PROJECT_ROOT / "data" / "cache"
     chunk_size: int = 1200
     chunk_overlap: int = 200
+    embed_batch: int = 32
 
 
 # Shared settings instance
