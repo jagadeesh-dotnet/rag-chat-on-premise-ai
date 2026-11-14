@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     embed_batch: int = 32
     qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
     qdrant_collection: str = "documents"
+    ocr_enabled: bool = True  # read scanned PDF pages and images with RapidOCR
+    ocr_min_chars: int = 50  # a page with less text than this (and an image on it) is OCR'd
+    ocr_dpi: int = 200  # render resolution for OCR: higher = sharper but slower
+    ocr_min_confidence: float = 0.5  # drop recognised text the engine is unsure about
     search_k: int = 5  # passages per search given to the model
     num_ctx: int = 16384  # model context window; Ollama's small default silently drops the system prompt
     max_tool_rounds: int = 4  # searches per answer before the model must answer

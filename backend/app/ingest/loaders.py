@@ -8,13 +8,25 @@ from docx import Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from app.config import settings
 from app.ingest.cleaning import clean_text, remove_repeated_lines
 from app.ingest.models import Section
+from app.ingest.ocr import ocr_available, ocr_image
 
 log = logging.getLogger(__name__)
 
 SPREADSHEETS = {".xlsx", ".xls", ".csv"}  # handled as SQL tables in step 7, not chunked
-DOCUMENT_TYPES = {".pdf", ".docx", ".doc"}  # what the indexer embeds
+IMAGES = {".png", ".jpg", ".jpeg"}  # read with OCR
+DOCUMENT_TYPES = {".pdf", ".docx", ".doc"} | IMAGES  # what the indexer embeds
+
+
+def _page_text(page: pymupdf.Page, use_ocr: bool) -> tuple[str, bool]:
+    """The page's text layer, or OCR when the page is a scan (almost no text, but an image)."""
+    text = page.get_text()  # default reading order, no sort=True
+    if len(text.strip()) >= settings.ocr_min_chars or not page.get_images() or not use_ocr:
+        return text, False
+    image = page.get_pixmap(dpi=settings.ocr_dpi).tobytes("png")
+    return ocr_image(image), True
 
 
 # A line that is only "Annex A" starts an annex (the table of contents line has more text, so it doesn't match).
@@ -26,12 +38,25 @@ def load_pdf(path: Path) -> list[Section]:
     """One section per page, with repeated headers/footers removed.
 
     Pages inside an annex get heading "Annex A" etc., so its "6.2" isn't confused with clause 6.2.
+    Scanned pages are read with OCR.
     """
+    use_ocr = ocr_available()
     with pymupdf.open(path) as pdf:
         if pdf.needs_pass:
             raise ValueError("the PDF is password-protected")
-        pages = [clean_text(page.get_text()) for page in pdf]  # default reading order, no sort=True
+        pages, ocr_pages = [], []
+        for number, page in enumerate(pdf, start=1):
+            text, was_ocr = _page_text(page, use_ocr)
+            pages.append(clean_text(text))
+            if was_ocr:
+                ocr_pages.append(number)
     pages = remove_repeated_lines(pages)
+
+    if ocr_pages:
+        log.info("%s: OCR on page(s) %s", path.name, ocr_pages)
+    empty = [n for n, text in enumerate(pages, start=1) if not text.strip()]
+    if empty:
+        log.warning("%s: no text on page(s) %s - not searchable", path.name, empty)
 
     sections, part = [], None
     for number, text in enumerate(pages, start=1):
@@ -122,11 +147,25 @@ def _convert_doc_to_docx(path: Path, cache_dir: Path) -> Path:
     return target
 
 
+def load_image(path: Path) -> list[Section]:
+    """A picture of a document (photo, screenshot, scan) read with OCR."""
+    if not ocr_available():
+        log.warning("Skipping %s: images need OCR, which is off or not installed", path.name)
+        return []
+    text = clean_text(ocr_image(path.read_bytes()))
+    if not text:
+        log.warning("%s: OCR found no text", path.name)
+        return []
+    return [Section(text=text)]
+
+
 def load_file(path: Path, cache_dir: Path) -> list[Section]:
     """Read any supported file. Unsupported types return [] with a log message."""
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return load_pdf(path)
+    if suffix in IMAGES:
+        return load_image(path)
     if suffix == ".docx":
         return load_docx(path)
     if suffix == ".doc":
