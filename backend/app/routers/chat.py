@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from app.llm import stream_chat
+from app.agent import run_agent
 from app.schemas import ChatRequest
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -21,7 +21,7 @@ def to_ndjson(event: dict) -> str:
 async def chat(request: ChatRequest) -> StreamingResponse:
     async def events() -> AsyncIterator[str]:
         try:
-            async for event in stream_chat(request.messages):
+            async for event in run_agent(request.messages):
                 yield to_ndjson(event)
             yield to_ndjson({"type": "done"})
         except Exception as exc:

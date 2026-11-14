@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     qdrant_path: Path = PROJECT_ROOT / "data" / "qdrant"
     qdrant_collection: str = "documents"
     search_k: int = 5  # passages per search given to the model
+    num_ctx: int = 16384  # model context window; Ollama's small default silently drops the system prompt
+    max_tool_rounds: int = 4  # searches per answer before the model must answer
     min_score: float = 0.6  # dense cosine below this = unrelated (measured: off-topic ~0.55, hits 0.6-0.9)
 
 

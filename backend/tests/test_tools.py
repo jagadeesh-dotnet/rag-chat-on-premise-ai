@@ -1,3 +1,4 @@
+from app.agent import cited_numbers, strip_citations
 from app.tools.documents import format_results
 
 RESULTS = [
@@ -24,3 +25,13 @@ def test_format_results_without_results():
     text, passages = format_results([], first_number=1)
     assert passages == []
     assert "No relevant passages" in text
+
+
+def test_cited_numbers_reads_single_grouped_and_repeated_citations():
+    assert cited_numbers("27 days [1]. Carry over 5 [2, 3][3]. Not a citation: [x] or [].") == {1, 2, 3}
+
+
+def test_strip_citations_removes_markers_and_the_space_before_them():
+    assert strip_citations("Employees get 27 days [1]. Up to 5 carry over [2, 3].") == (
+        "Employees get 27 days. Up to 5 carry over."
+    )
