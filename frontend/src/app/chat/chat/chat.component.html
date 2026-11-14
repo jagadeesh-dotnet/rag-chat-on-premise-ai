@@ -1,0 +1,26 @@
+<div class="chat">
+  <div class="messages" #scroller>
+    <p class="empty" *ngIf="!messages.length">Ask me anything.</p>
+
+    <div *ngFor="let m of messages" class="message" [class.user]="m.role === 'user'" [class.error]="m.error">
+      <details *ngIf="m.thinking" class="thinking">
+        <summary>Thinking…</summary>
+        {{ m.thinking }}
+      </details>
+      <div class="content">{{ m.content || (streaming ? '…' : '') }}</div>
+    </div>
+  </div>
+
+  <form class="composer" (ngSubmit)="send()">
+    <textarea
+      name="input"
+      [(ngModel)]="input"
+      (keydown)="onKeydown($event)"
+      maxlength="8000"
+      rows="3"
+      placeholder="Type a message (Enter to send, Shift+Enter for a new line)"
+    ></textarea>
+    <button *ngIf="!streaming" type="submit" [disabled]="!input.trim()">Send</button>
+    <button *ngIf="streaming" type="button" (click)="stop()">Stop</button>
+  </form>
+</div>
