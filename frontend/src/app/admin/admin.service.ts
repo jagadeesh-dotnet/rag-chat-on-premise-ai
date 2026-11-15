@@ -45,6 +45,31 @@ export interface Role {
   members: number;
 }
 
+/** A document file compared with the index. */
+export interface DocumentFile {
+  source: string; // path under data/docs, e.g. 'hr/hr-handbook-sample.docx'
+  size: number | null; // bytes; null when the file is gone
+  modified: string | null;
+  chunks: number;
+  status: 'indexed' | 'changed' | 'new' | 'missing';
+}
+
+export interface DocumentsStatus {
+  folder: string;
+  files: DocumentFile[];
+}
+
+/** What one index run did. */
+export interface IndexSummary {
+  added: string[];
+  updated: string[];
+  removed: string[];
+  unchanged: string[];
+  errors: Record<string, string>; // file -> error message
+  chunks: number;
+  seconds: number;
+}
+
 export interface AuditEntry {
   at: string;
   username: string;
@@ -104,6 +129,16 @@ export class AdminService {
 
   deleteRule(id: number) {
     return this.http.delete(`${this.url}/rules/${id}`);
+  }
+
+  documents(): Observable<DocumentsStatus> {
+    return this.http.get<DocumentsStatus>(`${this.url}/documents`);
+  }
+
+  /** Index new and changed files (force: every file). Can take a while: the model embeds every chunk. */
+  reindex(force = false): Observable<IndexSummary> {
+    const params = new HttpParams().set('force', String(force));
+    return this.http.post<IndexSummary>(`${environment.apiUrl}/api/documents/index`, null, { params });
   }
 
   audit(username = '', action = ''): Observable<AuditEntry[]> {

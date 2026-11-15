@@ -12,6 +12,7 @@ import { Component } from '@angular/core';
           <a routerLink="users" routerLinkActive="active">Users</a>
           <a routerLink="roles" routerLinkActive="active">Roles</a>
           <a routerLink="rules" routerLinkActive="active">Row rules</a>
+          <a routerLink="documents" routerLinkActive="active">Documents</a>
           <a routerLink="audit" routerLinkActive="active">Audit log</a>
         </nav>
       </header>

@@ -1,0 +1,62 @@
+<section>
+  <div class="bar">
+    <h2>Documents</h2>
+    <div class="filters">
+      <button type="button" class="primary" (click)="reindex(false)" [disabled]="running !== null || loading">
+        {{ running === 'changed' ? 'Indexing…' : 'Re-index changed files' }}
+      </button>
+      <button type="button" (click)="reindex(true)" [disabled]="running !== null || loading">
+        {{ running === 'all' ? 'Indexing…' : 'Re-index everything' }}
+      </button>
+    </div>
+  </div>
+  <p class="hint">
+    PDF, Word and image files in <code>{{ folder || 'data/docs' }}</code> are searched by the chat after they are
+    indexed. Sub-folders are permission folders (e.g. <code>hr</code>). A normal run only processes new and changed
+    files. Spreadsheets and databases are read directly and don't need indexing.
+  </p>
+
+  <p class="notice" *ngIf="running" role="status">
+    Indexing… each chunk is embedded by the local model, so this can take a minute. You can stay on this page.
+  </p>
+  <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+
+  <div class="panel" *ngIf="result" role="status">
+    <strong>{{ resultWasFull ? 'Full re-index' : 'Re-index' }} finished in {{ result.seconds }} s</strong>
+    <span class="hint"> · {{ result.chunks }} chunks written</span>
+    <div class="chips">
+      <span class="attr">added {{ result.added.length }}</span>
+      <span class="attr">updated {{ result.updated.length }}</span>
+      <span class="attr">removed {{ result.removed.length }}</span>
+      <span class="attr">unchanged {{ result.unchanged.length }}</span>
+      <span class="attr" [class.error]="errorList.length">errors {{ errorList.length }}</span>
+    </div>
+    <ul class="errors" *ngIf="errorList.length">
+      <li *ngFor="let e of errorList"><code>{{ e[0] }}</code>: {{ e[1] }}</li>
+    </ul>
+  </div>
+
+  <p class="hint" *ngIf="!loading && files.length">
+    {{ files.length }} files · {{ count('indexed') }} indexed
+    <ng-container *ngIf="pending"> · <strong>{{ pending }} waiting for re-index</strong></ng-container>
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>File</th><th>Status</th><th class="num">Chunks</th><th class="num">Size</th><th>Modified</th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let f of files" [class.inactive]="f.status === 'missing'">
+          <td><code>{{ f.source }}</code></td>
+          <td><span class="status" [ngClass]="f.status">{{ statusText(f.status) }}</span></td>
+          <td class="num">{{ f.chunks || '–' }}</td>
+          <td class="num nowrap">{{ size(f.size) }}</td>
+          <td class="nowrap">{{ f.modified ? (f.modified | date: 'short') : '–' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="hint" *ngIf="loading">Loading…</p>
+  <p class="hint" *ngIf="!loading && !files.length">No documents yet. Put PDF or Word files in the folder above.</p>
+</section>

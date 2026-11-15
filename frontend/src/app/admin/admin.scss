@@ -85,4 +85,22 @@ code { font-size: 0.85em; }
 .attr { display: inline-block; background: var(--surface-2); border-radius: 4px; padding: 1px 6px; margin: 0 4px 2px 0; font-size: 0.85em; }
 .attr-input { width: 220px; }
 .link-button { border: none; background: none; color: var(--accent); padding: 0 2px; font-size: 0.8em; }
+
+/* Documents tab: a coloured dot before the status text (the text keeps the theme colour) */
+.status { white-space: nowrap; }
+.status::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.status.indexed::before { background: #16a34a; }
+.status.changed::before { background: #d97706; }
+.status.new::before { background: #2563eb; }
+.status.missing::before { background: #dc2626; }
+.num { text-align: right; }
+.errors { margin: 8px 0 0; padding-left: 18px; font-size: 0.85em; color: #dc2626; }
 .link-button:hover { text-decoration: underline; background: none; }
