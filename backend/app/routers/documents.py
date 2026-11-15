@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 
+from app.auth import service
 from app.auth.deps import AdminAccess, CurrentAccess
 from app.ingest.indexer import IndexBusyError, index_documents
 from app.ingest.store import get_store
@@ -17,12 +18,21 @@ def list_documents(access: CurrentAccess) -> list[dict]:
     return [{"source": s, "chunks": n} for s, n in sorted(counts.items()) if access.can_read_document(s)]
 
 
+def summary_text(summary: dict, force: bool) -> str:
+    """'added 1, updated 0, removed 0, unchanged 6, errors 0, chunks 12, 3.2 s' for the audit log."""
+    counts = ", ".join(f"{key} {len(summary[key])}" for key in ("added", "updated", "removed", "unchanged", "errors"))
+    return f"{counts}, chunks {summary['chunks']}, {summary['seconds']} s" + (", full re-index" if force else "")
+
+
 @router.post("/index")
-def index(_: AdminAccess, force: bool = False) -> dict:
+def index(access: AdminAccess, force: bool = False) -> dict:
+    """Index new and changed files, remove deleted ones; force=true re-indexes every file."""
     try:
-        return index_documents(force=force)
+        summary = index_documents(force=force)
     except IndexBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    service.record({"id": access.user_id, "username": access.username}, "documents_indexed", summary_text(summary, force))
+    return summary
 
 
 @router.get("/search")

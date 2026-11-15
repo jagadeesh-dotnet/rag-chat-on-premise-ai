@@ -42,6 +42,12 @@ def audit(db: Db, actor: dict | None, action: str, detail: str = "", username: s
     )
 
 
+def record(actor: dict, action: str, detail: str = "") -> None:
+    """One audit entry in its own transaction, for actions outside the account tables (e.g. indexing)."""
+    with connect() as db:
+        audit(db, actor, action, detail)
+
+
 def list_audit(limit: int = 200, username: str | None = None, action: str | None = None) -> list[dict]:
     sql, args = "SELECT TOP (?) at, username, action, detail FROM audit WHERE 1 = 1", [limit]
     if username:

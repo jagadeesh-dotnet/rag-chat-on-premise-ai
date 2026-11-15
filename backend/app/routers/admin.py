@@ -1,5 +1,6 @@
 """User, role and audit administration. Every endpoint requires the admin role."""
 
+from datetime import UTC, datetime
 from typing import Literal
 
 import pyodbc
@@ -13,7 +14,8 @@ from app.auth.passwords import PasswordPolicyError
 from app.config import settings
 from app.databases.registry import load_databases
 from app.databases.schema import schema_cache
-from app.ingest.indexer import find_documents
+from app.ingest.indexer import file_hash, find_documents
+from app.ingest.store import get_store
 from app.tables.catalog import get_catalog
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -144,6 +146,41 @@ def resources(_: AdminAccess) -> dict:
             "database": database_columns,
         },
     }
+
+
+@router.get("/documents")
+def documents(_: AdminAccess) -> dict:
+    """Every document file on disk compared with the index, so the admin sees what the next run will do.
+
+    status: indexed (up to date), changed (re-indexed next run), new (added next run),
+    missing (in the index but the file is gone: removed next run).
+    """
+    docs = settings.docs_dir
+    store = get_store()
+    indexed = store.file_hashes()  # {source: SHA-256 at indexing time}
+    chunks = store.chunk_counts()
+    files = []
+    for path in find_documents(docs):
+        source = path.relative_to(docs).as_posix()
+        if source not in indexed:
+            status = "new"
+        elif indexed[source] != file_hash(path):
+            status = "changed"
+        else:
+            status = "indexed"
+        stat = path.stat()
+        files.append(
+            {
+                "source": source,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(timespec="seconds"),
+                "chunks": chunks.get(source, 0),
+                "status": status,
+            }
+        )
+    for source in sorted(indexed.keys() - {f["source"] for f in files}):
+        files.append({"source": source, "size": None, "modified": None, "chunks": chunks.get(source, 0), "status": "missing"})
+    return {"folder": str(docs), "files": files}
 
 
 @router.get("/rules")
