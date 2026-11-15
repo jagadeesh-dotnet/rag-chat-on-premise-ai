@@ -28,6 +28,10 @@ vector database and the data. No cloud API is used and no data leaves the comput
 |---|---|
 | ![Admin roles](docs/images/admin-roles.png) | ![Admin row rules](docs/images/admin-rules.png) |
 
+**Admin – documents:** the status of every file and the re-index buttons, with the result of the last run.
+
+![Admin documents and re-index](docs/images/admin-documents.png)
+
 ---
 
 ## Overall architecture
@@ -249,9 +253,15 @@ Open http://localhost:4200 and sign in with the admin account.
 
 ### 6. Index the documents
 
-Documents must be indexed once, and again after files change (only changed files are processed).
-Sign in to the app as admin first, then open http://localhost:8000/docs, choose
-`POST /api/documents/index` and click **Try it out → Execute**. The same browser session cookie is used.
+Documents must be indexed once, and again after files change. Sign in as admin and open
+**Admin → Documents**. The page lists every file in `data/docs` with its status (indexed, changed, new, or
+removed from disk):
+
+- **Re-index changed files** processes only new and changed files, and removes deleted ones.
+- **Re-index everything** embeds every file again (slower; use it after changing the chunk settings).
+
+Every run is written to the audit log. The same API can be called directly: `POST /api/documents/index`
+(add `?force=true` for everything).
 
 ---
 
@@ -331,7 +341,7 @@ backend/
 frontend/src/app/
   chat/               chat page, sidebar, result cards, charts
   auth/               sign-in and change-password pages, guards, interceptor
-  admin/              users, roles, row rules, audit log
+  admin/              users, roles, row rules, documents (re-index), audit log
 db-scripts/           SQL Server setup scripts
 data/docs/            sample documents and spreadsheet
 ```
